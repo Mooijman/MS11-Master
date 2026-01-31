@@ -259,7 +259,9 @@ void setup() {
   readGlobalConfig();
   pass = readFile(LittleFS, passPath);
   
-  // Set default GPIO Viewer state to off if not set
+  // GPIO Viewer DISABLED by default due to I2C/SPI interference issue
+  // Library fix (setSkipPeripheralPins) tested but not working - pins still being read
+  // See: https://github.com/thelastoutpostworkshop/gpio_viewer/issues/195
   if (gpioViewerEnabled == "") {
     gpioViewerEnabled = "off";
     writeGlobalConfig();
@@ -297,10 +299,14 @@ void setup() {
     // Initialize GPIO Viewer if enabled
     if (gpioViewerEnabled == "true" || gpioViewerEnabled == "on") {
       Serial.println("Starting GPIO Viewer...");
+      Serial.println("I2C pins should be GPIO 4 (SCL) and GPIO 5 (SDA)");
       gpio_viewer = new GPIOViewer();
       gpio_viewer->setSamplingInterval(100);
       gpio_viewer->setPort(5555);
+      gpio_viewer->setSkipPeripheralPins(true);  // Skip I2C/SPI/UART pins (default: true)
+      Serial.println("setSkipPeripheralPins(true) called - I2C pins should be skipped");
       gpio_viewer->begin();
+      Serial.println("GPIO Viewer started");
     } else {
       Serial.println("GPIO Viewer is disabled");
     }
