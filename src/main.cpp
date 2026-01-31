@@ -355,7 +355,7 @@ void setup() {
           gpioViewerEnabled = "off";
           updateGpioViewerSetting();
           Serial.println("GPIO Viewer disabled - powercycle required");
-          message = "Powercycle ESP32 now!";
+          message = "<img src='hex100.png' alt='' style='height: 0.8em; vertical-align: -0.05em; margin-right: 6px;'>Powercycle ESP32 now!";
           gpioDisabled = true;
         }
       }
