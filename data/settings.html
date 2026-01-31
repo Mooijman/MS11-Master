@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ESP Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <div class="topnav">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy" style="height: 24px; margin: 50px auto 10px auto; display: block;">
+  </div>
+  <div class="content">
+    <div class="card-grid">
+      <div class="card">
+        <form action="/settings" method="POST">
+          <div>
+            <h1>Settings</h1>
+            
+            <div style="display: flex; align-items: center; justify-content: space-between; margin: 12px 0;">
+              <div style="display: flex; align-items: center;">
+                <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% style="margin: 0 8px 0 0; display: inline-block;">
+                <label for="gpioviewer" style="margin: 0; display: inline;">Enable GPIO Viewer</label>
+              </div>
+              %GPIOVIEWER_BUTTON%
+            </div>
+            
+            <div style="display: flex; align-items: center; margin: 12px 0;">
+              <input type="checkbox" id="reboot" name="reboot" value="on" style="margin: 0 8px 0 0; display: inline-block;">
+              <label for="reboot" style="margin: 0; display: inline;">Reboot ESP32</label>
+            </div>
+            
+            <div style="text-align: right;">
+              <input type="submit" value="Submit">
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

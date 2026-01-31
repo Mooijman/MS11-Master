@@ -9,8 +9,8 @@
 #include <SSD1306.h>
 #include "images.h"
 
-// start gpio viewer instance:
-GPIOViewer gpio_viewer;
+// GPIO Viewer pointer (only instantiated if enabled)
+GPIOViewer* gpio_viewer = nullptr;
 
 // OLED display instance (address 0x3c, SDA pin 5, SCL pin 4)
 SSD1306 display(0x3c, 5, 4);
@@ -42,6 +42,7 @@ const char* passPath = "/pass.txt";
 const char* ipPath = "/ip.txt";
 const char* gatewayPath = "/gateway.txt";
 const char* dhcpPath = "/dhcp.txt";
+const char* gpioViewerPath = "/gpioviewer.txt";
 
 IPAddress localIP;
 IPAddress localGateway;
@@ -53,6 +54,18 @@ const long interval = 10000;  // interval to wait for Wi-Fi connection (millisec
 
 // Track if we're in AP mode
 bool isAPMode = false;
+
+// IP display timer
+unsigned long ipDisplayTime = 0;
+bool ipDisplayShown = false;
+bool ipDisplayCleared = false;
+
+// Delayed reboot timer
+unsigned long rebootTime = 0;
+bool rebootScheduled = false;
+
+// Forward declaration
+void performReboot();
 
 // Initialize LittleFS
 void initLittleFS() {
@@ -171,6 +184,13 @@ void setup() {
   gateway = readFile(LittleFS, gatewayPath);
   useDHCP = readFile(LittleFS, dhcpPath);
   
+  // Set default GPIO Viewer state to off if not set
+  String gpioViewerEnabled = readFile(LittleFS, gpioViewerPath);
+  if (gpioViewerEnabled == "") {
+    writeFile(LittleFS, gpioViewerPath, "off");
+    gpioViewerEnabled = "off";
+  }
+  
   Serial.println("Loaded credentials:");
   Serial.println("SSID: " + ssid);
   Serial.println("Password: " + pass);
@@ -194,16 +214,110 @@ void setup() {
     display.clear();
     display.drawString(0, 16, "IP: " + WiFi.localIP().toString());
     display.display();
-    delay(2000);
     
-    // Initialize GPIO Viewer
-    gpio_viewer.setSamplingInterval(100);
-    gpio_viewer.setPort(5555);
-    gpio_viewer.begin();
+    // Start timer to clear display after 3 seconds
+    ipDisplayTime = millis();
+    ipDisplayShown = true;
+    ipDisplayCleared = false;
+    
+    // Initialize GPIO Viewer if enabled
+    if (gpioViewerEnabled == "true" || gpioViewerEnabled == "on") {
+      Serial.println("Starting GPIO Viewer...");
+      gpio_viewer = new GPIOViewer();
+      gpio_viewer->setSamplingInterval(100);
+      gpio_viewer->setPort(5555);
+      gpio_viewer->begin();
+    } else {
+      Serial.println("GPIO Viewer is disabled");
+    }
     
     // Route for root / web page
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
       request->send(LittleFS, "/index.html", "text/html");
+    });
+    
+    // Route for settings page with template processor
+    server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+      String gpioViewerStatus = readFile(LittleFS, gpioViewerPath);
+      bool gpioEnabled = (gpioViewerStatus == "true" || gpioViewerStatus == "on");
+      
+      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled](const String& var) -> String {
+        if (var == "GPIOVIEWER_CHECKED") {
+          return gpioEnabled ? "checked" : "";
+        }
+        if (var == "GPIOVIEWER_BUTTON") {
+          if (gpioEnabled) {
+            String ip = WiFi.localIP().toString();
+            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" style=\"background-color: #4A4A4A; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-size: 14px; white-space: nowrap;\">Open GPIO Viewer</a>";
+          }
+          return "";
+        }
+        return String();
+      });
+    });
+    
+    // Handle settings POST
+    server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+      bool shouldReboot = false;
+      bool gpioDisabled = false;
+      String message = "";
+      
+      Serial.println("Settings POST received");
+      
+      // Read current GPIO Viewer setting
+      String currentGpioViewerSetting = readFile(LittleFS, gpioViewerPath);
+      
+      // Check gpioviewer checkbox
+      if (request->hasParam("gpioviewer", true)) {
+        // Checkbox is checked - enable GPIO Viewer
+        if (currentGpioViewerSetting != "on" && currentGpioViewerSetting != "true") {
+          writeFile(LittleFS, gpioViewerPath, "on");
+          Serial.println("GPIO Viewer enabled - rebooting...");
+          message = "GPIO Viewer enabled... please wait";
+          shouldReboot = true;
+        }
+      } else {
+        // Checkbox is not checked - disable GPIO Viewer
+        if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
+          writeFile(LittleFS, gpioViewerPath, "off");
+          Serial.println("GPIO Viewer disabled - powercycle required");
+          message = "Powercycle ESP32 now!";
+          gpioDisabled = true;
+        }
+      }
+      
+      // Check if reboot checkbox was checked
+      if (request->hasParam("reboot", true)) {
+        Serial.println("Reboot requested");
+        message = "Rebooting... please wait";
+        shouldReboot = true;
+      }
+      
+      // Send confirmation page
+      if (shouldReboot || gpioDisabled) {
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Please Wait</title><meta name='viewport' content='width=device-width, initial-scale=1'>";
+        if (shouldReboot) {
+          html += "<meta http-equiv='refresh' content='20;url=/settings'>";
+        }
+        html += "<link rel='icon' href='data:,'><link rel='stylesheet' type='text/css' href='style.css'></head><body>";
+        html += "<div class='topnav'><img src='waacs-logo.png' alt='Waacs Design & Consultancy' style='height: 24px; margin: 50px auto 10px auto; display: block;'></div>";
+        html += "<div class='content'><div class='card-grid'><div class='card'>";
+        html += "<h1 style='color: #555;'>" + message + "</h1>";
+        if (gpioDisabled) {
+          html += "<div style='text-align: right;'><input type='button' value='Reload' onclick='window.location.reload();' style='border: none; color: #FEFCFB; background-color: #000000; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; width: auto; min-width: 120px; margin: 15px 0 5px 0; border-radius: 4px; cursor: pointer;'></div>";
+        }
+        html += "</div></div></div></body></html>";
+        request->send(200, "text/html", html);
+        
+        if (shouldReboot) {
+          // Schedule reboot after 2 seconds to allow browser to receive response
+          rebootScheduled = true;
+          rebootTime = millis();
+        }
+      } else {
+        // No changes - just redirect back
+        request->redirect("/settings");
+      }
     });
     
     server.serveStatic("/", LittleFS, "/");
@@ -243,6 +357,90 @@ void setup() {
       request->send(LittleFS, "/wifimanager.html", "text/html");
     });
     
+    // Route for settings page with template processor
+    server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+      String gpioViewerStatus = readFile(LittleFS, gpioViewerPath);
+      bool gpioEnabled = (gpioViewerStatus == "true" || gpioViewerStatus == "on");
+      
+      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled](const String& var) -> String {
+        if (var == "GPIOVIEWER_CHECKED") {
+          return gpioEnabled ? "checked" : "";
+        }
+        if (var == "GPIOVIEWER_BUTTON") {
+          if (gpioEnabled) {
+            String ip = WiFi.softAPIP().toString();
+            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" style=\"background-color: #4A4A4A; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-size: 14px; white-space: nowrap;\">Open GPIO Viewer</a>";
+          }
+          return "";
+        }
+        return String();
+      });
+    });
+    
+    // Handle settings POST
+    server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+      bool shouldReboot = false;
+      bool gpioDisabled = false;
+      String message = "";
+      
+      Serial.println("Settings POST received (AP mode)");
+      
+      // Read current GPIO Viewer setting
+      String currentGpioViewerSetting = readFile(LittleFS, gpioViewerPath);
+      
+      // Check gpioviewer checkbox
+      if (request->hasParam("gpioviewer", true)) {
+        // Checkbox is checked - enable GPIO Viewer
+        if (currentGpioViewerSetting != "on" && currentGpioViewerSetting != "true") {
+          writeFile(LittleFS, gpioViewerPath, "on");
+          Serial.println("GPIO Viewer enabled - rebooting...");
+          message = "GPIO Viewer enabled... please wait";
+          shouldReboot = true;
+        }
+      } else {
+        // Checkbox is not checked - disable GPIO Viewer
+        if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
+          writeFile(LittleFS, gpioViewerPath, "off");
+          Serial.println("GPIO Viewer disabled - powercycle required");
+          message = "Powercycle ESP32 now!";
+          gpioDisabled = true;
+        }
+      }
+      
+      // Check if reboot checkbox was checked
+      if (request->hasParam("reboot", true)) {
+        Serial.println("Reboot requested");
+        message = "Rebooting... please wait";
+        shouldReboot = true;
+      }
+      
+      // Send confirmation page
+      if (shouldReboot || gpioDisabled) {
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Please Wait</title><meta name='viewport' content='width=device-width, initial-scale=1'>";
+        if (shouldReboot) {
+          html += "<meta http-equiv='refresh' content='20;url=/settings'>";
+        }
+        html += "<link rel='icon' href='data:,'><link rel='stylesheet' type='text/css' href='style.css'></head><body>";
+        html += "<div class='topnav'><img src='waacs-logo.png' alt='Waacs Design & Consultancy' style='height: 24px; margin: 50px auto 10px auto; display: block;'></div>";
+        html += "<div class='content'><div class='card-grid'><div class='card'>";
+        html += "<h1 style='color: #555;'>" + message + "</h1>";
+        if (gpioDisabled) {
+          html += "<div style='text-align: right;'><input type='button' value='Reload' onclick='window.location.reload();' style='border: none; color: #FEFCFB; background-color: #000000; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; width: auto; min-width: 120px; margin: 15px 0 5px 0; border-radius: 4px; cursor: pointer;'></div>";
+        }
+        html += "</div></div></div></body></html>";
+        request->send(200, "text/html", html);
+        
+        if (shouldReboot) {
+          // Schedule reboot after 2 seconds to allow browser to receive response
+          rebootScheduled = true;
+          rebootTime = millis();
+        }
+      } else {
+        // No changes - just redirect back
+        request->redirect("/settings");
+      }
+    });
+
     // Catch-all for captive portal - redirect everything to root
     server.onNotFound([](AsyncWebServerRequest *request){
       request->send(LittleFS, "/wifimanager.html", "text/html");
@@ -340,10 +538,22 @@ void setup() {
       ESP.restart();
     });
     server.begin();
-  }
-}
+  }  // End of else (AP mode)
+}  // End of setup()
 
 void loop() {
+  // Non-blocking IP display clear after 3 seconds
+  if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > 3000)) {
+    display.clear();
+    display.display();
+    ipDisplayCleared = true;
+  }
+  
+  // Handle scheduled reboot after 2 seconds delay
+  if (rebootScheduled && (millis() - rebootTime > 2000)) {
+    performReboot();
+  }
+  
   // Process DNS requests only in AP mode for captive portal
   if (isAPMode) {
     dnsServer.processNextRequest();
@@ -351,7 +561,17 @@ void loop() {
   
   // Handle ArduinoOTA updates
   ArduinoOTA.handle();
-  
-  // Small delay to prevent 100% CPU usage and reduce heat
-  delay(10);
+}
+
+// Function to show reboot message and restart
+void performReboot() {
+  Serial.println("Showing reboot message on display");
+  display.clear();
+  display.display();
+  display.drawString(0, 26, "Rebooting...");
+  display.display();
+  Serial.println("Reboot message displayed");
+  delay(2000);
+  Serial.println("Executing restart...");
+  ESP.restart();
 }
