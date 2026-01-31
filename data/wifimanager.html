@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ESP Wi-Fi Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <div class="topnav">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy" style="height: 24px; margin: 50px auto 10px auto; display: block;">
+  </div>
+  <div class="content">
+    <div class="card-grid">
+      <div class="card">
+        <form action="/" method="POST" onsubmit="return validateForm()">
+          <div>
+            <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 8px; gap: 8px;">
+              <button type="button" onclick="scanNetworks()" style="margin: 0;">Scan</button>
+              <select id="ssid-select" onchange="updateSSID()" style="flex: 1; margin: 0;">
+                <option value="">-- Select Wi-Fi network</option>
+              </select>
+            </div>
+            <input type="text" id ="ssid" name="ssid" placeholder="Or enter SSID manually">
+            
+            <input type="password" id ="pass" name="pass" placeholder="Wi-Fi Password">
+            
+            <div style="display: flex; align-items: center; margin: 12px 0;">
+              <input type="checkbox" id="dhcp" name="dhcp" onchange="toggleIPFields()" checked style="margin: 0 8px 0 0; display: inline-block;">
+              <label for="dhcp" style="margin: 0; display: inline;">Auto IP-address</label>
+            </div>
+            
+            <div id="ip-fields">
+              <input type="text" id ="ip" name="ip" placeholder="Or enter fixed IP-address" value="">
+              <input type="text" id ="gateway" name="gateway" placeholder="... and enter fixed gateway" value="">
+            </div>
+            
+            <div style="text-align: right;">
+              <input type ="submit" value ="Submit">
+            </div>
+          </div>
+          <script>
+            function validateForm() {
+              var dhcp = document.getElementById('dhcp').checked;
+              if (!dhcp) {
+                var ip = document.getElementById('ip').value.trim();
+                var gateway = document.getElementById('gateway').value.trim();
+                
+                // Als gateway ingevuld maar geen IP, refresh pagina
+                if (gateway !== '' && ip === '') {
+                  alert('Please enter an IP address when specifying a gateway.');
+                  location.reload();
+                  return false;
+                }
+                
+                // Als IP ingevuld zonder gateway, set gateway to 0.0.0.0
+                if (ip !== '' && gateway === '') {
+                  document.getElementById('gateway').value = '0.0.0.0';
+                }
+              }
+              
+              // Alleen tekst feedback - kleur wijziging werkt niet betrouwbaar
+              var submitBtn = document.querySelector('input[type="submit"]');
+              submitBtn.value = 'Submitting...';
+              setTimeout(function() {
+                submitBtn.disabled = true;
+              }, 100);
+              
+              return true;
+            }
+            
+            function toggleIPFields() {
+              var dhcp = document.getElementById('dhcp').checked;
+              var ipFields = document.getElementById('ip-fields');
+              ipFields.style.display = dhcp ? 'none' : 'block';
+            }
+            
+            function updateSSID() {
+              var select = document.getElementById('ssid-select');
+              var input = document.getElementById('ssid');
+              if(select.value !== '') {
+                input.value = select.value;
+                input.style.display = 'none';
+              } else {
+                input.style.display = 'block';
+              }
+            }
+            
+            function scanNetworks() {
+              var button = event.target;
+              button.disabled = true;
+              button.innerHTML = 'Scanning...';
+              
+              fetch('/scan')
+                .then(response => response.json())
+                .then(data => {
+                  var select = document.getElementById('ssid-select');
+                  select.innerHTML = '<option value="">-- Select Wi-Fi network</option>';
+                  
+                  data.networks.forEach(network => {
+                    var option = document.createElement('option');
+                    option.value = network.ssid;
+                    option.text = network.ssid + ' (' + network.rssi + ' dBm)' + (network.encryption ? ' \u{1F512}' : '');
+                    select.appendChild(option);
+                  });
+                  
+                  button.disabled = false;
+                  button.innerHTML = 'Scan';
+                })
+                .catch(error => {
+                  console.error('Error:', error);
+                  button.disabled = false;
+                  button.innerHTML = 'Scan';
+                  alert('Scan failed. Please try again.');
+                });
+            }
+            
+            // Auto-scan on page load
+            window.addEventListener('load', function() {
+              setTimeout(scanNetworks, 1000);
+            });
+          </script>
+        </form>
+      </div>
+    </div>
+  </div>  <script>
+    // Verberg IP-velden bij laden als DHCP aangevinkt is
+    toggleIPFields();
+  </script></body>
+</html>
