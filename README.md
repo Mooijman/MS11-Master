@@ -1,4 +1,4 @@
-# ESP32-S3 WiFi Manager + OTA
+# ESP32-S3 WiFi Manager + OTA + OLED
 
 WiFi configuration manager voor ESP32-S3 (Seeed XIAO) met AsyncWebServer, LittleFS storage en ArduinoOTA voor draadloze firmware updates.
 
