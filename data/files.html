@@ -4,16 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Filemanager</title>
+  <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
 </head>
-<body class="file-manager">
+<body class="card-layout">
   <div class="topnav">
     <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
   </div>
   <div class="container">
     <div class="card">
       <div class="header">
-        <h1>Filemanager</h1>
+        <h1><img src="hex100.png" alt="" style="height: 0.8em; vertical-align: -0.05em; margin-right: 6px;">Filemanager</h1>
         <a href="/settings" class="card-close">&times;</a>
       </div>
 
@@ -79,14 +80,17 @@
           return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
         });
         
-        fileList.innerHTML = files.map(file => {
+        fileList.innerHTML = files
+          .filter(file => file.name !== '/pass.txt')
+          .map(file => {
           const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
           const isTxt = ext === '.txt';
+          const isConf = ext === '.conf';
           const isPng = ext === '.png';
           const isZeroBytes = file.size === 0;
           
           let viewEditButton = '';
-          if (isTxt) {
+          if (isTxt || isConf) {
             viewEditButton = `<button class="file-btn file-btn-edit" onclick="editFile('${file.name}')">View/Edit</button>`;
           } else if (isPng) {
             viewEditButton = `<button class="file-btn file-btn-view" onclick="viewFile('${file.name}')">View</button>`;
@@ -202,7 +206,6 @@
         });
         
         if (response.ok) {
-          alert('File saved successfully!');
           closeModal();
           refreshFiles();
         } else {
@@ -223,7 +226,6 @@
         });
         
         if (response.ok) {
-          alert('File deleted successfully!');
           refreshFiles();
         } else {
           alert('Error deleting file');

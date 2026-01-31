@@ -70,7 +70,7 @@ input[type=submit] {
 }
 
 input[type=submit]:hover {
-  background-color: #1282A2;
+  background-color: #e74c3c;
 }
 
 input[type=submit].submitting {
@@ -160,14 +160,18 @@ button:hover {
 
 .button-off:hover {
   background-color: #252524;
-} 
+}
+
+a#gpioViewerBtn:hover {
+  background-color: #DAA520 !important;
+}
 
 /* File Manager Styles */
-.file-manager * {
+.card-layout * {
   box-sizing: border-box;
 }
 
-.file-manager body {
+.card-layout body {
   background: white;
   min-height: 100vh;
   padding: 20px;
@@ -175,12 +179,12 @@ button:hover {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
-.file-manager .container {
+.card-layout .container {
   max-width: 700px;
   margin: 0 auto;
 }
 
-.file-manager .card {
+.card-layout .card {
   background: white;
   border-radius: 10px;
   padding: 30px;
@@ -188,18 +192,18 @@ button:hover {
   margin-bottom: 20px;
 }
 
-.file-manager .topnav {
+.card-layout .topnav {
   text-align: center;
   margin-bottom: 10px;
 }
 
-.file-manager .topnav img {
+.card-layout .topnav img {
   height: 24px;
   margin: 50px auto 10px auto;
   display: block;
 }
 
-.file-manager .header {
+.card-layout .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -207,24 +211,25 @@ button:hover {
   position: relative;
 }
 
-.file-manager h1 {
-  color: #333;
+.card-layout h1 {
+  color: #555;
   margin: 0;
   font-size: 24px;
   text-align: left;
   line-height: 1;
 }
 
-.file-manager .header-buttons {
+.card-layout .header-buttons {
   display: flex;
   flex-direction: row;
   gap: 6px;
   align-items: center;
 }
 
-.file-manager .card-close {
+.card-layout .card-close {
   position: absolute;
-  top: 0;
+  top: 50%;
+  transform: translateY(-50%);
   right: 0;
   background: none;
   border: none;
@@ -241,11 +246,11 @@ button:hover {
   justify-content: center;
 }
 
-.file-manager .card-close:hover {
+.card-layout .card-close:hover {
   color: #333;
 }
 
-.file-manager .btn {
+.card-layout .btn {
   color: white;
   padding: 3px 8px;
   border: none;
@@ -256,38 +261,38 @@ button:hover {
   min-width: 80px;
 }
 
-.file-manager .btn-refresh {
+.card-layout .btn-refresh {
   background: #4A4A4A;
 }
 
-.file-manager .btn-refresh:hover {
+.card-layout .btn-refresh:hover {
   background: #3498db;
 }
 
-.file-manager .btn-upload {
+.card-layout .btn-upload {
   background: #808080;
 }
 
-.file-manager .btn-upload:hover {
+.card-layout .btn-upload:hover {
   background: #764ba2;
 }
 
-.file-manager .btn-danger {
+.card-layout .btn-danger {
   background: #e74c3c;
 }
 
-.file-manager .btn-danger:hover {
+.card-layout .btn-danger:hover {
   background: #c0392b;
 }
 
-.file-manager .file-list {
+.card-layout .file-list {
   border: 1px solid #ddd;
   border-radius: 5px;
   overflow: hidden;
   margin-bottom: 20px;
 }
 
-.file-manager .file-item {
+.card-layout .file-item {
   display: flex;
   align-items: center;
   padding: 6px 10px;
@@ -295,19 +300,19 @@ button:hover {
   transition: background 0.2s;
 }
 
-.file-manager .file-item:last-child {
+.card-layout .file-item:last-child {
   border-bottom: none;
 }
 
-.file-manager .file-item:hover {
+.card-layout .file-item:hover {
   background: #f8f9fa;
 }
 
-.file-manager .file-item.control-row:hover {
+.card-layout .file-item.control-row:hover {
   background: transparent;
 }
 
-.file-manager .file-name {
+.card-layout .file-name {
   flex: 1;
   font-weight: 500;
   color: #333;
@@ -315,7 +320,7 @@ button:hover {
   text-align: left;
 }
 
-.file-manager .file-size {
+.card-layout .file-size {
   color: #999;
   font-size: 13px;
   margin-right: 20px;
@@ -324,12 +329,12 @@ button:hover {
   flex-shrink: 0;
 }
 
-.file-manager .file-actions {
+.card-layout .file-actions {
   display: flex;
   gap: 6px;
 }
 
-.file-manager .file-btn {
+.card-layout .file-btn {
   padding: 3px 8px;
   font-size: 12px;
   border: none;
@@ -338,25 +343,25 @@ button:hover {
   transition: all 0.2s;
 }
 
-.file-manager .file-btn-view {
+.card-layout .file-btn-view {
   background: #A0A0A0;
   color: white;
 }
 
-.file-manager .file-btn-view:hover {
+.card-layout .file-btn-view:hover {
   background: #DAA520;
 }
 
-.file-manager .file-btn-edit {
+.card-layout .file-btn-edit {
   background: #A0A0A0;
   color: white;
 }
 
-.file-manager .file-btn-edit:hover {
+.card-layout .file-btn-edit:hover {
   background: #DAA520;
 }
 
-.file-manager .file-btn-invisible {
+.card-layout .file-btn-invisible {
   background: #f5f5f5;
   color: transparent;
   border: none;
@@ -366,43 +371,43 @@ button:hover {
   border-radius: 4px;
 }
 
-.file-manager .file-btn-delete {
+.card-layout .file-btn-delete {
   background: #4A4A4A;
   color: white;
 }
 
-.file-manager .file-btn-delete:hover {
+.card-layout .file-btn-delete:hover {
   background: #e74c3c;
 }
 
-.file-manager .file-btn-download {
+.card-layout .file-btn-download {
   background: #808080;
   color: white;
 }
 
-.file-manager .file-btn-download:hover {
+.card-layout .file-btn-download:hover {
   background: #27ae60;
 }
 
-.file-manager .file-btn-upload {
+.card-layout .file-btn-upload {
   background: #808080;
   color: white;
 }
 
-.file-manager .file-btn-upload:hover {
+.card-layout .file-btn-upload:hover {
   background: #764ba2;
 }
 
-.file-manager .file-btn-refresh {
+.card-layout .file-btn-refresh {
   background: #4A4A4A;
   color: white;
 }
 
-.file-manager .file-btn-refresh:hover {
+.card-layout .file-btn-refresh:hover {
   background: #3498db;
 }
 
-.file-manager .modal {
+.card-layout .modal {
   display: none;
   position: fixed;
   top: 0;
@@ -415,11 +420,11 @@ button:hover {
   justify-content: center;
 }
 
-.file-manager .modal.active {
+.card-layout .modal.active {
   display: flex;
 }
 
-.file-manager .modal-content {
+.card-layout .modal-content {
   background: white;
   border-radius: 10px;
   padding: 25px;
@@ -429,20 +434,22 @@ button:hover {
   overflow-y: auto;
 }
 
-.file-manager .modal-header {
+.card-layout .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
 
-.file-manager .modal-title {
+.card-layout .modal-title {
   font-size: 20px;
   color: #333;
   word-break: break-all;
+  flex: 1;
+  text-align: left;
 }
 
-.file-manager .modal-close {
+.card-layout .modal-close {
   background: none;
   border: none;
   font-size: 28px;
@@ -451,21 +458,21 @@ button:hover {
   padding: 0;
   width: 30px;
   height: 30px;
-  line-height: 30px;
-  text-align: center;
+  line-height: 1;
+  text-align: right;
   margin-left: auto;
   flex-shrink: 0;
 }
 
-.file-manager .modal-close:hover {
+.card-layout .modal-close:hover {
   color: #333;
 }
 
-.file-manager #saveBtn:hover {
+.card-layout #saveBtn:hover {
   background-color: #1282A2 !important;
 }
 
-.file-manager textarea {
+.card-layout textarea {
   width: 100%;
   min-height: 300px;
   padding: 15px;
@@ -477,23 +484,23 @@ button:hover {
   margin-bottom: 15px;
 }
 
-.file-manager .modal-actions {
+.card-layout .modal-actions {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
 }
 
-.file-manager input[type="file"] {
+.card-layout input[type="file"] {
   display: none;
 }
 
-.file-manager .empty-state {
+.card-layout .empty-state {
   text-align: center;
   padding: 40px;
   color: #999;
 }
 
-.file-manager .spinner {
+.card-layout .spinner {
   border: 3px solid #f3f3f3;
   border-top: 3px solid #667eea;
   border-radius: 50%;
@@ -508,13 +515,13 @@ button:hover {
   100% { transform: rotate(360deg); }
 }
 
-.file-manager .back-link {
+.card-layout .back-link {
   display: inline-block;
   color: #333;
   text-decoration: none;
   font-size: 14px;
 }
 
-.file-manager .back-link:hover {
+.card-layout .back-link:hover {
   text-decoration: underline;
 }

@@ -2,24 +2,25 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ESP Settings</title>
+  <title>Settings</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
 </head>
-<body>
+<body class="card-layout">
   <div class="topnav">
     <img src="waacs-logo.png" alt="Waacs Design & Consultancy" style="height: 24px; margin: 50px auto 10px auto; display: block;">
   </div>
   <div class="content">
     <div class="card-grid">
       <div class="card">
-        <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #ddd;">
-          <a href="/files" style="display: block; background-color: #4A4A4A; color: white; padding: 12px; text-decoration: none; border-radius: 4px; text-align: center; font-size: 16px; transition: background-color 0.3s;" onmouseover="this.style.backgroundColor='#764ba2'" onmouseout="this.style.backgroundColor='#4A4A4A'">📁 File Manager</a>
+        <div class="header">
+          <h1><img src="hex100.png" alt="" style="height: 0.8em; vertical-align: -0.05em; margin-right: 6px;">Settings</h1>
+          <a href="/" class="card-close">&times;</a>
         </div>
         
         <form action="/settings" method="POST">
-          <div>
+          <div style="margin-bottom: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin: 12px 0;">
               <div style="display: flex; align-items: center;">
                 <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% style="margin: 0 8px 0 0; display: inline-block;">
@@ -27,17 +28,22 @@
               </div>
               %GPIOVIEWER_BUTTON%
             </div>
-            
-            <div style="display: flex; align-items: center; margin: 12px 0;">
-              <input type="checkbox" id="reboot" name="reboot" value="on" style="margin: 0 8px 0 0; display: inline-block;">
-              <label for="reboot" style="margin: 0; display: inline;">Reboot ESP32</label>
-            </div>
-            
-            <div style="text-align: right; margin-top: 20px;">
-              <input type="submit" value="Submit">
+          </div>
+          
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin: 12px 0;">
+              <div style="display: flex; align-items: center;">
+                <input type="checkbox" id="reboot" name="reboot" value="on" style="margin: 0 8px 0 0; display: inline-block;">
+                <label for="reboot" style="margin: 0; display: inline;">Reboot ESP32</label>
+              </div>
+              <input type="submit" value="Submit" style="margin: 0; padding: 3px 8px; font-size: 12px; border: none; border-radius: 4px; cursor: pointer; min-width: 60px;">
             </div>
           </div>
         </form>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+          <a href="/files" style="display: block; background-color: #4A4A4A; color: white; padding: 12px; text-decoration: none; border-radius: 4px; text-align: center; font-size: 16px; transition: background-color 0.3s;" onmouseover="this.style.backgroundColor='#764ba2'" onmouseout="this.style.backgroundColor='#4A4A4A'">📁 File Manager</a>
+        </div>
       </div>
     </div>
   </div>

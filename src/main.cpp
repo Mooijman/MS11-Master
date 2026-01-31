@@ -35,14 +35,11 @@ String pass;
 String ip;
 String gateway;
 String useDHCP;
+String gpioViewerEnabled;
 
 // File paths to save input values permanently
-const char* ssidPath = "/ssid.txt";
+const char* globalConfigPath = "/global.conf";
 const char* passPath = "/pass.txt";
-const char* ipPath = "/ip.txt";
-const char* gatewayPath = "/gateway.txt";
-const char* dhcpPath = "/dhcp.txt";
-const char* gpioViewerPath = "/gpioviewer.txt";
 
 IPAddress localIP;
 IPAddress localGateway;
@@ -109,6 +106,87 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
   }
 }
 
+// Read global config from file
+void readGlobalConfig() {
+  File file = LittleFS.open(globalConfigPath);
+  if (!file) {
+    Serial.println("Global config file not found");
+    return;
+  }
+  
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (line.startsWith("ssid=")) {
+      ssid = line.substring(5);
+    } else if (line.startsWith("ip=")) {
+      ip = line.substring(3);
+    } else if (line.startsWith("gateway=")) {
+      gateway = line.substring(8);
+    } else if (line.startsWith("dhcp=")) {
+      useDHCP = line.substring(5);
+    } else if (line.startsWith("gpioviewer=")) {
+      gpioViewerEnabled = line.substring(11);
+    }
+  }
+  file.close();
+}
+
+// Write global config to file
+void writeGlobalConfig() {
+  File file = LittleFS.open(globalConfigPath, FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open global config for writing");
+    return;
+  }
+  
+  file.println("ssid=" + ssid);
+  file.println("ip=" + ip);
+  file.println("gateway=" + gateway);
+  file.println("dhcp=" + useDHCP);
+  file.println("gpioviewer=" + gpioViewerEnabled);
+  file.close();
+  Serial.println("Global config saved");
+}
+
+// Update only GPIO Viewer setting in config file
+void updateGpioViewerSetting() {
+  // Read current config
+  String currentSsid, currentIp, currentGateway, currentDhcp;
+  File file = LittleFS.open(globalConfigPath);
+  if (file) {
+    while (file.available()) {
+      String line = file.readStringUntil('\n');
+      line.trim();
+      if (line.startsWith("ssid=")) {
+        currentSsid = line.substring(5);
+      } else if (line.startsWith("ip=")) {
+        currentIp = line.substring(3);
+      } else if (line.startsWith("gateway=")) {
+        currentGateway = line.substring(8);
+      } else if (line.startsWith("dhcp=")) {
+        currentDhcp = line.substring(5);
+      }
+    }
+    file.close();
+  }
+  
+  // Write back with updated GPIO viewer setting
+  file = LittleFS.open(globalConfigPath, FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open global config for writing");
+    return;
+  }
+  
+  file.println("ssid=" + currentSsid);
+  file.println("ip=" + currentIp);
+  file.println("gateway=" + currentGateway);
+  file.println("dhcp=" + currentDhcp);
+  file.println("gpioviewer=" + gpioViewerEnabled);
+  file.close();
+  Serial.println("GPIO Viewer setting updated");
+}
+
 // Initialize WiFi
 bool initWiFi() {
   if(ssid==""){
@@ -150,7 +228,7 @@ bool initWiFi() {
     if (currentMillis - previousMillis >= interval) {
       Serial.println("Failed to connect.");
       // Clear saved credentials so AP mode starts on next reboot
-      writeFile(LittleFS, ssidPath, "");
+      LittleFS.remove(globalConfigPath);
       writeFile(LittleFS, passPath, "");
       return false;
     }
@@ -178,17 +256,13 @@ void setup() {
   initLittleFS();
 
   // Load values saved in LittleFS
-  ssid = readFile(LittleFS, ssidPath);
+  readGlobalConfig();
   pass = readFile(LittleFS, passPath);
-  ip = readFile(LittleFS, ipPath);
-  gateway = readFile(LittleFS, gatewayPath);
-  useDHCP = readFile(LittleFS, dhcpPath);
   
   // Set default GPIO Viewer state to off if not set
-  String gpioViewerEnabled = readFile(LittleFS, gpioViewerPath);
   if (gpioViewerEnabled == "") {
-    writeFile(LittleFS, gpioViewerPath, "off");
     gpioViewerEnabled = "off";
+    writeGlobalConfig();
   }
   
   Serial.println("Loaded credentials:");
@@ -238,7 +312,7 @@ void setup() {
     
     // Route for settings page with template processor
     server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String gpioViewerStatus = readFile(LittleFS, gpioViewerPath);
+      String gpioViewerStatus = gpioViewerEnabled;
       bool gpioEnabled = (gpioViewerStatus == "true" || gpioViewerStatus == "on");
       
       request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled](const String& var) -> String {
@@ -248,7 +322,7 @@ void setup() {
         if (var == "GPIOVIEWER_BUTTON") {
           if (gpioEnabled) {
             String ip = WiFi.localIP().toString();
-            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" style=\"background-color: #4A4A4A; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-size: 14px; white-space: nowrap;\">Open GPIO Viewer</a>";
+            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" id=\"gpioViewerBtn\" style=\"background-color: #4A4A4A; color: white; padding: 3px 8px; text-decoration: none; border-radius: 4px; font-size: 12px; white-space: nowrap; transition: background-color 0.3s; min-width: 60px; display: inline-block; text-align: center;\">Open</a>";
           }
           return "";
         }
@@ -265,21 +339,23 @@ void setup() {
       Serial.println("Settings POST received");
       
       // Read current GPIO Viewer setting
-      String currentGpioViewerSetting = readFile(LittleFS, gpioViewerPath);
+      String currentGpioViewerSetting = gpioViewerEnabled;
       
       // Check gpioviewer checkbox
       if (request->hasParam("gpioviewer", true)) {
         // Checkbox is checked - enable GPIO Viewer
         if (currentGpioViewerSetting != "on" && currentGpioViewerSetting != "true") {
-          writeFile(LittleFS, gpioViewerPath, "on");
+          gpioViewerEnabled = "on";
+          updateGpioViewerSetting();
           Serial.println("GPIO Viewer enabled - rebooting...");
-          message = "GPIO Viewer enabled... please wait";
+          message = "<img src='hex100.png' alt='' style='height: 0.8em; vertical-align: -0.05em; margin-right: 6px;'>GPIO Viewer enabled - please wait";
           shouldReboot = true;
         }
       } else {
         // Checkbox is not checked - disable GPIO Viewer
         if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
-          writeFile(LittleFS, gpioViewerPath, "off");
+          gpioViewerEnabled = "off";
+          updateGpioViewerSetting();
           Serial.println("GPIO Viewer disabled - powercycle required");
           message = "Powercycle ESP32 now!";
           gpioDisabled = true;
@@ -289,7 +365,7 @@ void setup() {
       // Check if reboot checkbox was checked
       if (request->hasParam("reboot", true)) {
         Serial.println("Reboot requested");
-        message = "Rebooting... please wait";
+        message = "<img src='hex100.png' alt='' style='height: 0.8em; vertical-align: -0.05em; margin-right: 6px;'>Rebooting - please wait";
         shouldReboot = true;
       }
       
@@ -487,6 +563,7 @@ void setup() {
     
     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
       int params = request->params();
+      bool settingsChanged = false;
       for(int i=0;i<params;i++){
         const AsyncWebParameter* p = request->getParam(i);
         if(p->isPost()){
@@ -495,8 +572,7 @@ void setup() {
             ssid = p->value().c_str();
             Serial.print("SSID set to: ");
             Serial.println(ssid);
-            // Write file to save value
-            writeFile(LittleFS, ssidPath, ssid.c_str());
+            settingsChanged = true;
           }
           // HTTP POST pass value
           if (p->name() == PARAM_INPUT_2) {
@@ -511,24 +587,21 @@ void setup() {
             ip = p->value().c_str();
             Serial.print("IP Address set to: ");
             Serial.println(ip);
-            // Write file to save value
-            writeFile(LittleFS, ipPath, ip.c_str());
+            settingsChanged = true;
           }
           // HTTP POST gateway value
           if (p->name() == PARAM_INPUT_4) {
             gateway = p->value().c_str();
             Serial.print("Gateway set to: ");
             Serial.println(gateway);
-            // Write file to save value
-            writeFile(LittleFS, gatewayPath, gateway.c_str());
+            settingsChanged = true;
           }
           // HTTP POST dhcp value
           if (p->name() == PARAM_INPUT_5) {
             useDHCP = p->value().c_str();
             Serial.print("DHCP set to: ");
             Serial.println(useDHCP);
-            // Write file to save value
-            writeFile(LittleFS, dhcpPath, useDHCP.c_str());
+            settingsChanged = true;
           }
         }
       }
@@ -543,8 +616,13 @@ void setup() {
       }
       if(!dhcpChecked){
         useDHCP = "false";
-        writeFile(LittleFS, dhcpPath, "false");
+        settingsChanged = true;
         Serial.println("DHCP set to: false");
+      }
+      
+      // Save all network settings to config file
+      if (settingsChanged) {
+        writeGlobalConfig();
       }
       
       String responseMsg = "Done. ESP will restart and connect to your router";
