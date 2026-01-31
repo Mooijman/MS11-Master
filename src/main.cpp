@@ -320,6 +320,110 @@ void setup() {
       }
     });
     
+    // File manager page
+    server.on("/files", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(LittleFS, "/files.html", "text/html");
+    });
+    
+    // API: List all files
+    server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
+      String json = "[";
+      File root = LittleFS.open("/");
+      File file = root.openNextFile();
+      bool first = true;
+      
+      while (file) {
+        if (!file.isDirectory()) {
+          if (!first) json += ",";
+          String filename = String(file.name());
+          if (!filename.startsWith("/")) filename = "/" + filename;
+          json += "{\"name\":\"" + filename + "\",\"size\":" + String(file.size()) + "}";
+          first = false;
+        }
+        file = root.openNextFile();
+      }
+      json += "]";
+      request->send(200, "application/json", json);
+    });
+    
+    // API: Read file
+    server.on("/api/file", HTTP_GET, [](AsyncWebServerRequest *request) {
+      if (request->hasParam("path")) {
+        String path = request->getParam("path")->value();
+        if (!path.startsWith("/")) path = "/" + path;
+        if (LittleFS.exists(path)) {
+          request->send(LittleFS, path, "text/plain");
+        } else {
+          request->send(404, "text/plain", "File not found");
+        }
+      } else {
+        request->send(400, "text/plain", "Missing path parameter");
+      }
+    });
+    
+    // API: Write file
+    server.on("/api/file", HTTP_POST, [](AsyncWebServerRequest *request) {
+      if (request->hasParam("path", true) && request->hasParam("content", true)) {
+        String path = request->getParam("path", true)->value();
+        if (!path.startsWith("/")) path = "/" + path;
+        String content = request->getParam("content", true)->value();
+        
+        File file = LittleFS.open(path, "w");
+        if (file) {
+          file.print(content);
+          file.close();
+          request->send(200, "text/plain", "File saved");
+        } else {
+          request->send(500, "text/plain", "Error writing file");
+        }
+      } else {
+        request->send(400, "text/plain", "Missing parameters");
+      }
+    });
+    
+    // API: Delete file
+    server.on("/api/file", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+      if (request->hasParam("path")) {
+        String path = request->getParam("path")->value();
+        if (!path.startsWith("/")) path = "/" + path;
+        if (LittleFS.exists(path)) {
+          if (LittleFS.remove(path)) {
+            request->send(200, "text/plain", "File deleted");
+          } else {
+            request->send(500, "text/plain", "Error deleting file");
+          }
+        } else {
+          request->send(404, "text/plain", "File not found");
+        }
+      } else {
+        request->send(400, "text/plain", "Missing path parameter");
+      }
+    });
+    
+    // API: Upload file
+    server.on("/api/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+      request->send(200);
+    }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+      static File uploadFile;
+      
+      if (index == 0) {
+        // Start of upload
+        String path = "/" + filename;
+        uploadFile = LittleFS.open(path, "w");
+      }
+      
+      if (uploadFile) {
+        uploadFile.write(data, len);
+      }
+      
+      if (final) {
+        // End of upload
+        if (uploadFile) {
+          uploadFile.close();
+        }
+      }
+    });
+    
     server.serveStatic("/", LittleFS, "/");
     
     // Start ArduinoOTA
@@ -338,7 +442,7 @@ void setup() {
     // Show connecting message on OLED
     display.clear();
     display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0, 16, "Connecting Wifi...");
+    display.drawString(0, 16, "WiFi - Manager");
     display.display();
     
     // NULL sets an open Access Point
@@ -355,90 +459,6 @@ void setup() {
     // Web Server Root URL - Captive Portal
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       request->send(LittleFS, "/wifimanager.html", "text/html");
-    });
-    
-    // Route for settings page with template processor
-    server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String gpioViewerStatus = readFile(LittleFS, gpioViewerPath);
-      bool gpioEnabled = (gpioViewerStatus == "true" || gpioViewerStatus == "on");
-      
-      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled](const String& var) -> String {
-        if (var == "GPIOVIEWER_CHECKED") {
-          return gpioEnabled ? "checked" : "";
-        }
-        if (var == "GPIOVIEWER_BUTTON") {
-          if (gpioEnabled) {
-            String ip = WiFi.softAPIP().toString();
-            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" style=\"background-color: #4A4A4A; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-size: 14px; white-space: nowrap;\">Open GPIO Viewer</a>";
-          }
-          return "";
-        }
-        return String();
-      });
-    });
-    
-    // Handle settings POST
-    server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
-      bool shouldReboot = false;
-      bool gpioDisabled = false;
-      String message = "";
-      
-      Serial.println("Settings POST received (AP mode)");
-      
-      // Read current GPIO Viewer setting
-      String currentGpioViewerSetting = readFile(LittleFS, gpioViewerPath);
-      
-      // Check gpioviewer checkbox
-      if (request->hasParam("gpioviewer", true)) {
-        // Checkbox is checked - enable GPIO Viewer
-        if (currentGpioViewerSetting != "on" && currentGpioViewerSetting != "true") {
-          writeFile(LittleFS, gpioViewerPath, "on");
-          Serial.println("GPIO Viewer enabled - rebooting...");
-          message = "GPIO Viewer enabled... please wait";
-          shouldReboot = true;
-        }
-      } else {
-        // Checkbox is not checked - disable GPIO Viewer
-        if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
-          writeFile(LittleFS, gpioViewerPath, "off");
-          Serial.println("GPIO Viewer disabled - powercycle required");
-          message = "Powercycle ESP32 now!";
-          gpioDisabled = true;
-        }
-      }
-      
-      // Check if reboot checkbox was checked
-      if (request->hasParam("reboot", true)) {
-        Serial.println("Reboot requested");
-        message = "Rebooting... please wait";
-        shouldReboot = true;
-      }
-      
-      // Send confirmation page
-      if (shouldReboot || gpioDisabled) {
-        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Please Wait</title><meta name='viewport' content='width=device-width, initial-scale=1'>";
-        if (shouldReboot) {
-          html += "<meta http-equiv='refresh' content='20;url=/settings'>";
-        }
-        html += "<link rel='icon' href='data:,'><link rel='stylesheet' type='text/css' href='style.css'></head><body>";
-        html += "<div class='topnav'><img src='waacs-logo.png' alt='Waacs Design & Consultancy' style='height: 24px; margin: 50px auto 10px auto; display: block;'></div>";
-        html += "<div class='content'><div class='card-grid'><div class='card'>";
-        html += "<h1 style='color: #555;'>" + message + "</h1>";
-        if (gpioDisabled) {
-          html += "<div style='text-align: right;'><input type='button' value='Reload' onclick='window.location.reload();' style='border: none; color: #FEFCFB; background-color: #000000; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; width: auto; min-width: 120px; margin: 15px 0 5px 0; border-radius: 4px; cursor: pointer;'></div>";
-        }
-        html += "</div></div></div></body></html>";
-        request->send(200, "text/html", html);
-        
-        if (shouldReboot) {
-          // Schedule reboot after 2 seconds to allow browser to receive response
-          rebootScheduled = true;
-          rebootTime = millis();
-        }
-      } else {
-        // No changes - just redirect back
-        request->redirect("/settings");
-      }
     });
 
     // Catch-all for captive portal - redirect everything to root

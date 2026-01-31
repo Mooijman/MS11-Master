@@ -161,3 +161,360 @@ button:hover {
 .button-off:hover {
   background-color: #252524;
 } 
+
+/* File Manager Styles */
+.file-manager * {
+  box-sizing: border-box;
+}
+
+.file-manager body {
+  background: white;
+  min-height: 100vh;
+  padding: 20px;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+
+.file-manager .container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.file-manager .card {
+  background: white;
+  border-radius: 10px;
+  padding: 30px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  margin-bottom: 20px;
+}
+
+.file-manager .topnav {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.file-manager .topnav img {
+  height: 24px;
+  margin: 50px auto 10px auto;
+  display: block;
+}
+
+.file-manager .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.file-manager h1 {
+  color: #333;
+  margin: 0;
+  font-size: 24px;
+  text-align: left;
+  line-height: 1;
+}
+
+.file-manager .header-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+.file-manager .card-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #999;
+  text-decoration: none;
+  line-height: 1;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-manager .card-close:hover {
+  color: #333;
+}
+
+.file-manager .btn {
+  color: white;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.3s;
+  min-width: 80px;
+}
+
+.file-manager .btn-refresh {
+  background: #4A4A4A;
+}
+
+.file-manager .btn-refresh:hover {
+  background: #3498db;
+}
+
+.file-manager .btn-upload {
+  background: #808080;
+}
+
+.file-manager .btn-upload:hover {
+  background: #764ba2;
+}
+
+.file-manager .btn-danger {
+  background: #e74c3c;
+}
+
+.file-manager .btn-danger:hover {
+  background: #c0392b;
+}
+
+.file-manager .file-list {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.file-manager .file-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid #eee;
+  transition: background 0.2s;
+}
+
+.file-manager .file-item:last-child {
+  border-bottom: none;
+}
+
+.file-manager .file-item:hover {
+  background: #f8f9fa;
+}
+
+.file-manager .file-item.control-row:hover {
+  background: transparent;
+}
+
+.file-manager .file-name {
+  flex: 1;
+  font-weight: 500;
+  color: #333;
+  word-break: break-all;
+  text-align: left;
+}
+
+.file-manager .file-size {
+  color: #999;
+  font-size: 13px;
+  margin-right: 20px;
+  min-width: 70px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.file-manager .file-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.file-manager .file-btn {
+  padding: 3px 8px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.file-manager .file-btn-view {
+  background: #A0A0A0;
+  color: white;
+}
+
+.file-manager .file-btn-view:hover {
+  background: #DAA520;
+}
+
+.file-manager .file-btn-edit {
+  background: #A0A0A0;
+  color: white;
+}
+
+.file-manager .file-btn-edit:hover {
+  background: #DAA520;
+}
+
+.file-manager .file-btn-invisible {
+  background: #f5f5f5;
+  color: transparent;
+  border: none;
+  cursor: default;
+  padding: 3px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.file-manager .file-btn-delete {
+  background: #4A4A4A;
+  color: white;
+}
+
+.file-manager .file-btn-delete:hover {
+  background: #e74c3c;
+}
+
+.file-manager .file-btn-download {
+  background: #808080;
+  color: white;
+}
+
+.file-manager .file-btn-download:hover {
+  background: #27ae60;
+}
+
+.file-manager .file-btn-upload {
+  background: #808080;
+  color: white;
+}
+
+.file-manager .file-btn-upload:hover {
+  background: #764ba2;
+}
+
+.file-manager .file-btn-refresh {
+  background: #4A4A4A;
+  color: white;
+}
+
+.file-manager .file-btn-refresh:hover {
+  background: #3498db;
+}
+
+.file-manager .modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-manager .modal.active {
+  display: flex;
+}
+
+.file-manager .modal-content {
+  background: white;
+  border-radius: 10px;
+  padding: 25px;
+  max-width: 700px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.file-manager .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.file-manager .modal-title {
+  font-size: 20px;
+  color: #333;
+  word-break: break-all;
+}
+
+.file-manager .modal-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #999;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  text-align: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.file-manager .modal-close:hover {
+  color: #333;
+}
+
+.file-manager #saveBtn:hover {
+  background-color: #1282A2 !important;
+}
+
+.file-manager textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  resize: vertical;
+  margin-bottom: 15px;
+}
+
+.file-manager .modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.file-manager input[type="file"] {
+  display: none;
+}
+
+.file-manager .empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
+
+.file-manager .spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.file-manager .back-link {
+  display: inline-block;
+  color: #333;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.file-manager .back-link:hover {
+  text-decoration: underline;
+}

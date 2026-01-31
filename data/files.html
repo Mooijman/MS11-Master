@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Filemanager</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body class="file-manager">
+  <div class="topnav">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
+  </div>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <h1>Filemanager</h1>
+        <a href="/settings" class="card-close">&times;</a>
+      </div>
+
+      <div id="fileList" class="file-list">
+        <div class="spinner"></div>
+      </div>
+      
+      <div class="file-item control-row">
+        <div class="file-name"></div>
+        <div class="file-size"></div>
+        <div class="file-actions">
+          <button class="file-btn file-btn-upload" onclick="document.getElementById('uploadInput').click()">Upload</button>
+          <button class="file-btn file-btn-refresh" onclick="refreshFiles()">Refresh</button>
+          <input type="file" id="uploadInput" onchange="uploadFile(this.files[0])" style="display: none;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View/Edit Modal -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle"></div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div id="imageContainer" style="display: none;">
+        <hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">
+        <img id="imagePreview" style="max-width: 100%; height: auto;">
+        <hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">
+      </div>
+      <textarea id="fileContent"></textarea>
+      <div class="modal-actions">
+        <button class="btn" id="cancelBtn" onclick="closeModal()">Cancel</button>
+        <button class="btn" id="saveBtn" onclick="saveFile()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentFile = null;
+
+    async function refreshFiles() {
+      const fileList = document.getElementById('fileList');
+      fileList.innerHTML = '<div class="spinner"></div>';
+      
+      try {
+        const response = await fetch('/api/files');
+        const files = await response.json();
+        
+        if (files.length === 0) {
+          fileList.innerHTML = '<div class="empty-state">No files found</div>';
+          return;
+        }
+        
+        // Sort by extension, then by filename
+        files.sort((a, b) => {
+          const extA = a.name.toLowerCase().substring(a.name.lastIndexOf('.'));
+          const extB = b.name.toLowerCase().substring(b.name.lastIndexOf('.'));
+          if (extA !== extB) {
+            return extA.localeCompare(extB);
+          }
+          return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        });
+        
+        fileList.innerHTML = files.map(file => {
+          const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+          const isTxt = ext === '.txt';
+          const isPng = ext === '.png';
+          const isZeroBytes = file.size === 0;
+          
+          let viewEditButton = '';
+          if (isTxt) {
+            viewEditButton = `<button class="file-btn file-btn-edit" onclick="editFile('${file.name}')">View/Edit</button>`;
+          } else if (isPng) {
+            viewEditButton = `<button class="file-btn file-btn-view" onclick="viewFile('${file.name}')">View</button>`;
+          } else {
+            viewEditButton = `<button class="file-btn file-btn-invisible" disabled>&nbsp;</button>`;
+          }
+          
+          let downloadButton = '';
+          if (isZeroBytes) {
+            downloadButton = `<button class="file-btn file-btn-invisible" disabled>&nbsp;</button>`;
+          } else {
+            downloadButton = `<button class="file-btn file-btn-download" onclick="downloadFile('${file.name}')">Download</button>`;
+          }
+          
+          return `
+            <div class="file-item">
+              <div class="file-name">${file.name}</div>
+              <div class="file-size">${formatBytes(file.size)}</div>
+              <div class="file-actions">
+                ${viewEditButton}
+                ${downloadButton}
+                <button class="file-btn file-btn-delete" onclick="deleteFile('${file.name}')">Delete</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        fileList.innerHTML = '<div class="empty-state">Error loading files</div>';
+        console.error('Error:', error);
+      }
+    }
+
+    async function viewFile(filename) {
+      try {
+        const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+        const isPng = ext === '.png';
+        
+        document.getElementById('modalTitle').textContent = filename;
+        
+        if (isPng) {
+          // Display image with borders
+          document.getElementById('fileContent').style.display = 'none';
+          const imgContainer = document.getElementById('imageContainer');
+          const imgPreview = document.getElementById('imagePreview');
+          imgPreview.src = filename;
+          imgContainer.style.display = 'block';
+          document.getElementById('modal').classList.add('active');
+          document.getElementById('saveBtn').style.display = 'none';
+          document.getElementById('cancelBtn').style.display = 'none';
+        } else {
+          // Display text content
+          const response = await fetch('/api/file?path=' + encodeURIComponent(filename));
+          const content = await response.text();
+          const textarea = document.getElementById('fileContent');
+          textarea.value = content;
+          textarea.readOnly = true;
+          textarea.style.display = 'block';
+          document.getElementById('imageContainer').style.display = 'none';
+          document.getElementById('modal').classList.add('active');
+          document.getElementById('saveBtn').style.display = 'none';
+          document.getElementById('cancelBtn').style.display = 'inline-block';
+        }
+        currentFile = filename;
+      } catch (error) {
+        alert('Error loading file');
+        console.error('Error:', error);
+      }
+    }
+
+    async function editFile(filename) {
+      try {
+        const response = await fetch('/api/file?path=' + encodeURIComponent(filename));
+        let content = '';
+        if (response.ok) {
+          content = await response.text();
+        }
+        
+        document.getElementById('modalTitle').textContent = filename;
+        const textarea = document.getElementById('fileContent');
+        textarea.value = content;
+        textarea.readOnly = false;
+        textarea.style.display = 'block';
+        document.getElementById('imageContainer').style.display = 'none';
+        document.getElementById('modal').classList.add('active');
+        document.getElementById('saveBtn').style.display = 'inline-block';
+        document.getElementById('cancelBtn').style.display = 'none';
+        currentFile = filename;
+      } catch (error) {
+        // Suppress error display, just open empty editor
+        document.getElementById('modalTitle').textContent = filename;
+        const textarea = document.getElementById('fileContent');
+        textarea.value = '';
+        textarea.readOnly = false;
+        textarea.style.display = 'block';
+        document.getElementById('imageContainer').style.display = 'none';
+        document.getElementById('modal').classList.add('active');
+        document.getElementById('saveBtn').style.display = 'inline-block';
+        document.getElementById('cancelBtn').style.display = 'none';
+        currentFile = filename;
+      }
+    }
+
+    async function saveFile() {
+      if (!currentFile) return;
+      
+      const content = document.getElementById('fileContent').value;
+      
+      try {
+        const response = await fetch('/api/file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'path=' + encodeURIComponent(currentFile) + '&content=' + encodeURIComponent(content)
+        });
+        
+        if (response.ok) {
+          alert('File saved successfully!');
+          closeModal();
+          refreshFiles();
+        } else {
+          alert('Error saving file');
+        }
+      } catch (error) {
+        alert('Error saving file');
+        console.error('Error:', error);
+      }
+    }
+
+    async function deleteFile(filename) {
+      if (!confirm('Are you sure you want to delete ' + filename + '?')) return;
+      
+      try {
+        const response = await fetch('/api/file?path=' + encodeURIComponent(filename), {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          alert('File deleted successfully!');
+          refreshFiles();
+        } else {
+          alert('Error deleting file');
+        }
+      } catch (error) {
+        alert('Error deleting file');
+        console.error('Error:', error);
+      }
+    }
+
+    async function downloadFile(filename) {
+      window.open('/api/file?path=' + encodeURIComponent(filename), '_blank');
+    }
+
+    async function uploadFile(file) {
+      if (!file) return;
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (response.ok) {
+          alert('File uploaded successfully!');
+          refreshFiles();
+        } else {
+          alert('Error uploading file');
+        }
+      } catch (error) {
+        alert('Error uploading file');
+        console.error('Error:', error);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('active');
+      currentFile = null;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round(bytes / Math.pow(k, i) * 10) / 10 + ' ' + sizes[i];
+    }
+
+    // Load files on page load
+    refreshFiles();
+  </script>
+</body>
+</html>
