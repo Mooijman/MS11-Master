@@ -6,13 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
-  <script>
-    function toggleUpdateUrl() {
-      var updatesEnabled = document.getElementById('updates').checked;
-      var updateUrlField = document.getElementById('update-url-field');
-      updateUrlField.style.display = updatesEnabled ? 'block' : 'none';
-    }
-  </script>
 </head>
 <body class="card-layout">
   <div class="topnav">
@@ -40,12 +33,10 @@
           <div>
             <div class="flex-row">
               <div class="flex-col">
-                <input type="checkbox" id="updates" name="updates" value="on" %UPDATES_CHECKED% onchange="toggleUpdateUrl()" class="checkbox-inline">
+                <input type="checkbox" id="updates" name="updates" value="on" %UPDATES_CHECKED% class="checkbox-inline">
                 <label for="updates" class="label-inline">Enable software updates</label>
               </div>
-            </div>
-            <div id="update-url-field" style="display:none;">
-              <input type="text" id="updateurl" name="updateurl" placeholder="update-url" value="%UPDATE_URL%" class="input-full">
+              %UPDATES_BUTTON%
             </div>
           </div>
           
@@ -66,8 +57,5 @@
       </div>
     </div>
   </div>
-  <script>
-    toggleUpdateUrl();
-  </script>
 </body>
 </html>

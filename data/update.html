@@ -20,34 +20,232 @@
         </div>
         
         <div class="padding-top-20">
-          <p class="text-left text-muted margin-bottom-20">
-            Upload nieuwe firmware om de ESP32 bij te werken.
-          </p>
           
-          <form id="updateForm" method="POST" action="/update" enctype="multipart/form-data">
-            <div class="section-divider">
+          <!-- OTA Update Section -->
+          <div>
+            
+            <div id="update-content">
+              <!-- Firmware Info -->
               <div class="margin-bottom-20">
-                <label for="firmware" class="label-bold">
-                  Selecteer firmware bestand (.bin):
-                </label>
-                <input type="file" id="firmware" name="firmware" accept=".bin" class="file-input">
+                <p class="text-left text-muted">
+                  <strong>FW:</strong> <span id="fw-info">-</span><br>
+                  <strong>FS:</strong> <span id="fs-info">-</span><br>
+                  <span id="update-availability" style="font-style:italic;">-</span>
+                </p>
               </div>
               
-              <div class="text-right">
-                <input type="submit" value="Update" class="btn-small btn-update">
+              <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+              
+              <!-- Check button -->
+              <div id="check-section" class="text-right">
+                <button onclick="checkForUpdate()" class="btn-small">Check</button>
               </div>
             </div>
-          </form>
-          
-          <div id="progress" class="progress-container">
-            <div class="progress-bar-bg">
-              <div id="progressBar" class="progress-bar"></div>
+            
+            <div id="update-disabled" style="display:none;">
+              <p class="text-left text-muted">
+                <strong>FW:</strong> <span id="fw-info-disabled">-</span><br>
+                <strong>FS:</strong> <span id="fs-info-disabled">-</span><br>
+                <span style="font-style:italic;color:#999;">updates disabled</span>
+              </p>
+              
+              <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
             </div>
-            <p id="progressText" class="progress-text"></p>
+            
+            <div id="update-status-section" style="display:none;" class="margin-top-20">
+              <div class="update-status margin-bottom-20">
+                <div class="flex-row">
+                  <div class="flex-col text-left">
+                    <p><strong>Beschikbare Versie:</strong> <span id="remote-version">-</span></p>
+                    <p><strong>Status:</strong> <span id="update-status">Idle</span></p>
+                    <p class="text-muted"><small>Laatst gecontroleerd: <span id="last-check">-</span></small></p>
+                  </div>
+                </div>
+              </div>
+              
+              <div id="update-error" class="margin-bottom-10" style="display:none;color:#e74c3c;">
+                <p><strong>Fout:</strong> <span id="error-message"></span></p>
+              </div>
+              
+              <div id="update-actions" class="margin-bottom-20" style="display:none;">
+                <div class="flex-row">
+                  <button onclick="installUpdate('firmware')" class="btn-small" style="flex:1;">Installeer Firmware</button>
+                  <button onclick="installUpdate('littlefs')" class="btn-small" style="flex:1;">Installeer Filesystem</button>
+                  <button onclick="installUpdate('both')" class="btn-small" style="flex:1;">Installeer Alles</button>
+                </div>
+              </div>
+              
+              <div id="progress-ota" style="display:none;">
+                <div class="progress-bar-bg">
+                  <div id="progress-bar-ota" class="progress-bar" style="width:0%"></div>
+                </div>
+                <p id="progress-text-ota" class="progress-text text-center">0%</p>
+              </div>
+            </div>
           </div>
+          
         </div>
       </div>
     </div>
   </div>
+  
+  <script>
+    let pollInterval;
+    
+    function updateStatus() {
+      fetch('/api/update/status')
+        .then(response => response.json())
+        .then(data => {
+          // Update firmware info section
+          document.getElementById('fw-info').textContent = data.currentFirmwareVersion;
+          document.getElementById('fs-info').textContent = data.currentFilesystemVersion;
+          
+          // Check if updates are enabled
+          if (!data.updatesEnabled) {
+            // Show disabled view
+            document.getElementById('update-content').style.display = 'none';
+            document.getElementById('update-disabled').style.display = 'block';
+            document.getElementById('fw-info-disabled').textContent = data.currentFirmwareVersion;
+            document.getElementById('fs-info-disabled').textContent = data.currentFilesystemVersion;
+            document.getElementById('update-status-section').style.display = 'none';
+            return; // Don't process further if updates disabled
+          }
+          
+          // Show enabled view
+          document.getElementById('update-content').style.display = 'block';
+          document.getElementById('update-disabled').style.display = 'none';
+          
+          document.getElementById('remote-version').textContent = data.remoteVersion || '-';
+          
+          // Update status text
+          const statusText = ['Idle', 'Controleren...', 'Update Beschikbaar', 'Downloaden...', 'Installeren...', 'Succesvol', 'Fout'];
+          document.getElementById('update-status').textContent = statusText[data.state] || 'Onbekend';
+          
+          // Show last check time
+          if (data.lastCheck > 0) {
+            const checkDate = new Date(data.lastCheck);
+            document.getElementById('last-check').textContent = checkDate.toLocaleString('nl-NL');
+          }
+          
+          // Show error if present
+          if (data.lastError && data.lastError.length > 0) {
+            document.getElementById('update-error').style.display = 'block';
+            document.getElementById('error-message').textContent = data.lastError;
+          } else {
+            document.getElementById('update-error').style.display = 'none';
+          }
+          
+          // Update availability text
+          if (data.firmwareAvailable || data.littlefsAvailable) {
+            document.getElementById('update-availability').textContent = 'update available';
+            document.getElementById('update-availability').style.color = '#27ae60';
+            document.getElementById('update-actions').style.display = 'block';
+            document.getElementById('update-status-section').style.display = 'block';
+          } else if (data.lastCheck > 0) {
+            document.getElementById('update-availability').textContent = 'up to date';
+            document.getElementById('update-availability').style.color = '#999';
+            document.getElementById('update-actions').style.display = 'none';
+            // Show status section if we've checked before
+            if (data.state > 0) {
+              document.getElementById('update-status-section').style.display = 'block';
+            }
+          } else {
+            document.getElementById('update-availability').textContent = '';
+            document.getElementById('update-actions').style.display = 'none';
+          }
+          
+          // Show progress during download/install
+          if (data.state === 3 || data.state === 4) { // DOWNLOADING or INSTALLING
+            document.getElementById('progress-ota').style.display = 'block';
+            document.getElementById('progress-bar-ota').style.width = data.downloadProgress + '%';
+            document.getElementById('progress-text-ota').textContent = data.downloadProgress + '%';
+            document.getElementById('update-status-section').style.display = 'block';
+            startPolling();
+          } else {
+            document.getElementById('progress-ota').style.display = 'none';
+            if (data.state !== 2 && data.state !== 1) { // Not AVAILABLE or CHECKING
+              stopPolling();
+            }
+          }
+          
+          // Auto reload after successful update
+          if (data.state === 5) { // SUCCESS
+            setTimeout(() => {
+              alert('Update succesvol! Device herstart...');
+              window.location.reload();
+            }, 2000);
+          }
+        })
+        .catch(error => {
+          console.error('Status update failed:', error);
+        });
+    }
+    
+    function startPolling() {
+      if (!pollInterval) {
+        pollInterval = setInterval(updateStatus, 2000);
+      }
+    }
+    
+    function stopPolling() {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+    
+    function checkForUpdate() {
+      document.getElementById('update-status').textContent = 'Controleren...';
+      document.getElementById('update-status-section').style.display = 'block';
+      fetch('/api/update/check', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          setTimeout(updateStatus, 1000);
+          if (data.success) {
+            if (data.updateAvailable) {
+              alert('Update beschikbaar!');
+            } else {
+              alert('Geen updates beschikbaar.');
+            }
+          } else {
+            alert('Check mislukt. Controleer de update URL in settings.');
+          }
+        })
+        .catch(error => {
+          alert('Check mislukt: ' + error);
+        });
+    }
+    
+    function installUpdate(type) {
+      const typeText = type === 'firmware' ? 'Firmware' : type === 'littlefs' ? 'Filesystem' : 'Firmware en Filesystem';
+      if (!confirm('Device zal herstarten na ' + typeText + ' update. Doorgaan?')) return;
+      
+      document.getElementById('update-status').textContent = 'Downloaden...';
+      startPolling();
+      
+      fetch('/api/update/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'type=' + type
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.rebootRequired) {
+          alert('Update gestart! Device herstart...');
+        } else if (!data.success) {
+          alert('Update mislukt: ' + data.message);
+          stopPolling();
+        }
+      })
+      .catch(error => {
+        alert('Update mislukt: ' + error);
+        stopPolling();
+      });
+    }
+    
+    // Initial load and periodic refresh
+    updateStatus();
+    setInterval(updateStatus, 60000); // Refresh every minute when idle
+  </script>
 </body>
 </html>
