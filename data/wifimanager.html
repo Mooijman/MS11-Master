@@ -90,7 +90,6 @@
             function scanNetworks() {
               var button = event.target;
               button.disabled = true;
-              button.innerHTML = 'Scanning...';
               
               fetch('/scan')
                 .then(response => response.json())
@@ -106,12 +105,10 @@
                   });
                   
                   button.disabled = false;
-                  button.innerHTML = 'Scan';
                 })
                 .catch(error => {
                   console.error('Error:', error);
                   button.disabled = false;
-                  button.innerHTML = 'Scan';
                   alert('Scan failed. Please try again.');
                 });
             }

@@ -42,6 +42,12 @@ String otaEnabled;
 const char* globalConfigPath = "/global.conf";
 const char* passPath = "/pass.txt";
 
+// WiFi scan cache
+String cachedScanResults = "";
+unsigned long lastScanTime = 0;
+const unsigned long SCAN_INTERVAL = 10000; // 10 seconds
+bool scanInProgress = false;
+
 IPAddress localIP;
 IPAddress localGateway;
 IPAddress subnet(255, 255, 0, 0);
@@ -600,21 +606,46 @@ void setup() {
       request->send(LittleFS, "/wifimanager.html", "text/html");
     });
     
-    // WiFi scan endpoint
+    // WiFi scan endpoint - return cached results
     server.on("/scan", HTTP_GET, [](AsyncWebServerRequest *request){
-      String json = "{\"networks\":[";
-      int n = WiFi.scanNetworks();
-      for (int i = 0; i < n; ++i) {
-        if (i) json += ",";
-        json += "{";
-        json += "\"ssid\":\"" + WiFi.SSID(i) + "\"";
-        json += ",\"rssi\":" + String(WiFi.RSSI(i));
-        json += ",\"encryption\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false");
-        json += "}";
+      unsigned long currentTime = millis();
+      
+      // If no cached results or cache expired, trigger async scan
+      if (cachedScanResults.isEmpty() || (currentTime - lastScanTime > SCAN_INTERVAL)) {
+        if (!scanInProgress) {
+          scanInProgress = true;
+          WiFi.scanNetworks(true); // Start async scan
+          lastScanTime = currentTime;
+        }
+        
+        // Check if scan completed
+        int n = WiFi.scanComplete();
+        if (n >= 0) {
+          // Scan completed, build JSON
+          String json = "{\"networks\":[";
+          for (int i = 0; i < n; ++i) {
+            if (i) json += ",";
+            json += "{";
+            json += "\"ssid\":\"" + WiFi.SSID(i) + "\"";
+            json += ",\"rssi\":" + String(WiFi.RSSI(i));
+            json += ",\"encryption\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false");
+            json += "}";
+          }
+          json += "]}";
+          cachedScanResults = json;
+          WiFi.scanDelete();
+          scanInProgress = false;
+        } else if (n == WIFI_SCAN_RUNNING) {
+          // Scan still in progress, return empty or old cache
+          if (cachedScanResults.isEmpty()) {
+            request->send(200, "application/json", "{\"networks\":[],\"scanning\":true}");
+            return;
+          }
+        }
       }
-      json += "]}";
-      request->send(200, "application/json", json);
-      WiFi.scanDelete();
+      
+      // Return cached results
+      request->send(200, "application/json", cachedScanResults);
     });
     
     server.serveStatic("/", LittleFS, "/");
