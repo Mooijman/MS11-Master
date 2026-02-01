@@ -639,8 +639,7 @@ void setup() {
           // HTTP POST pass value
           if (p->name() == PARAM_INPUT_2) {
             pass = p->value().c_str();
-            Serial.print("Password set to: ");
-            Serial.println(pass);
+            Serial.println("Password updated (not logged for security)");
             // Write file to save value
             writeFile(LittleFS, passPath, pass.c_str());
           }
