@@ -91,18 +91,36 @@ String readFirstLine(fs::FS &fs, const char * path){
   return fileContent;
 }
 
-// Write file to LittleFS
+// Write file to LittleFS (atomic)
 void writeFile(fs::FS &fs, const char * path, const char * message){
   Serial.printf("Writing file: %s\r\n", path);
-
-  File file = fs.open(path, FILE_WRITE);
+  
+  // Create temp file path
+  String tempPath = String(path) + ".tmp";
+  
+  // Write to temp file
+  File file = fs.open(tempPath.c_str(), FILE_WRITE);
   if(!file){
-    Serial.println("- failed to open file for writing");
+    Serial.println("- failed to open temp file for writing");
     return;
   }
   if(file.print(message)){
-    Serial.println("- file written");
+    file.flush();
+    file.close();
+    
+    // Remove old file if exists
+    if(fs.exists(path)){
+      fs.remove(path);
+    }
+    
+    // Rename temp to final
+    if(fs.rename(tempPath.c_str(), path)){
+      Serial.println("- file written (atomic)");
+    } else {
+      Serial.println("- atomic rename failed");
+    }
   } else {
+    file.close();
     Serial.println("- write failed");
   }
 }
@@ -135,11 +153,14 @@ void readGlobalConfig() {
   file.close();
 }
 
-// Write global config to file
+// Write global config to file (atomic)
 void writeGlobalConfig() {
-  File file = LittleFS.open(globalConfigPath, FILE_WRITE);
+  const char* tempPath = "/global.conf.tmp";
+  
+  // Write to temp file
+  File file = LittleFS.open(tempPath, FILE_WRITE);
   if (!file) {
-    Serial.println("Failed to open global config for writing");
+    Serial.println("Failed to open temp config for writing");
     return;
   }
   
@@ -149,11 +170,23 @@ void writeGlobalConfig() {
   file.println("dhcp=" + useDHCP);
   file.println("gpioviewer=" + gpioViewerEnabled);
   file.println("ota=" + otaEnabled);
+  file.flush();
   file.close();
-  Serial.println("Global config saved");
+  
+  // Remove old file if exists
+  if(LittleFS.exists(globalConfigPath)){
+    LittleFS.remove(globalConfigPath);
+  }
+  
+  // Rename temp to final
+  if(LittleFS.rename(tempPath, globalConfigPath)){
+    Serial.println("Global config saved (atomic)");
+  } else {
+    Serial.println("Failed to rename config file");
+  }
 }
 
-// Update only GPIO Viewer setting in config file
+// Update only GPIO Viewer setting in config file (atomic)
 void updateGpioViewerSetting() {
   // Read current config
   String currentSsid, currentIp, currentGateway, currentDhcp;
@@ -175,10 +208,11 @@ void updateGpioViewerSetting() {
     file.close();
   }
   
-  // Write back with updated GPIO viewer setting
-  file = LittleFS.open(globalConfigPath, FILE_WRITE);
+  // Write to temp file
+  const char* tempPath = "/global.conf.tmp";
+  file = LittleFS.open(tempPath, FILE_WRITE);
   if (!file) {
-    Serial.println("Failed to open global config for writing");
+    Serial.println("Failed to open temp config for writing");
     return;
   }
   
@@ -187,8 +221,20 @@ void updateGpioViewerSetting() {
   file.println("gateway=" + currentGateway);
   file.println("dhcp=" + currentDhcp);
   file.println("gpioviewer=" + gpioViewerEnabled);
+  file.flush();
   file.close();
-  Serial.println("GPIO Viewer setting updated");
+  
+  // Remove old file if exists
+  if(LittleFS.exists(globalConfigPath)){
+    LittleFS.remove(globalConfigPath);
+  }
+  
+  // Rename temp to final
+  if(LittleFS.rename(tempPath, globalConfigPath)){
+    Serial.println("GPIO Viewer setting updated (atomic)");
+  } else {
+    Serial.println("Failed to rename config file");
+  }
 }
 
 // Initialize WiFi
