@@ -149,4 +149,4 @@ Would you like me to:
 2. Try a different approach (e.g., catching the error at `__digitalRead()` level)?
 3. Implement manual pin exclusion as a fallback?
 
-Thank you for the quick implementation attempt! The feature is much needed, but needs some debugging to make it work correctly.
+Thank you for the quick implementation attempt!

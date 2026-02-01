@@ -86,11 +86,12 @@
           const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
           const isTxt = ext === '.txt';
           const isConf = ext === '.conf';
+          const isInfo = ext === '.info';
           const isPng = ext === '.png';
           const isZeroBytes = file.size === 0;
           
           let viewEditButton = '';
-          if (isTxt || isConf) {
+          if (isTxt || isConf || isInfo) {
             viewEditButton = `<button class="file-btn file-btn-edit" onclick="editFile('${file.name}')">View/Edit</button>`;
           } else if (isPng) {
             viewEditButton = `<button class="file-btn file-btn-view" onclick="viewFile('${file.name}')">View</button>`;

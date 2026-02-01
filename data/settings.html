@@ -6,6 +6,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <script>
+    function toggleNetworkFields() {
+      const dhcpChecked = document.getElementById('dhcp').checked;
+      const networkFields = document.getElementById('network-fields');
+      networkFields.style.display = dhcpChecked ? 'none' : 'block';
+    }
+    function toggleDebugFields() {
+      const debugChecked = document.getElementById('debug').checked;
+      document.getElementById('debug-fields').style.display = debugChecked ? 'block' : 'none';
+    }
+    function toggleUpdateFields() {
+      const updatesChecked = document.getElementById('updates').checked;
+      document.getElementById('updateurl-group').style.display = updatesChecked ? 'flex' : 'none';
+      document.getElementById('githubtoken-group').style.display = updatesChecked ? 'flex' : 'none';
+    }
+    function toggleTokenVisibility() {
+      const tokenInput = document.getElementById('githubtoken');
+      const toggleBtn = document.getElementById('token-toggle');
+      if (tokenInput.type === 'password') {
+        tokenInput.type = 'text';
+        toggleBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+      } else {
+        tokenInput.type = 'password';
+        toggleBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+      }
+    }
+    function resetWiFi() {
+      if (confirm('Reset WiFi settings? Device will reboot into AP mode.')) {
+        fetch('/reset-wifi', {method: 'POST'})
+          .then(() => {
+            alert('WiFi reset. Device rebooting...');
+            setTimeout(() => window.location.href = '/', 3000);
+          });
+      }
+    }
+    window.onload = function() {
+      toggleNetworkFields();
+      toggleDebugFields();
+      toggleUpdateFields();
+      document.getElementById('dhcp').addEventListener('change', toggleNetworkFields);
+      document.getElementById('debug').addEventListener('change', toggleDebugFields);
+      document.getElementById('updates').addEventListener('change', toggleUpdateFields);
+    }
+  </script>
 </head>
 <body class="card-layout">
   <div class="topnav">
@@ -20,9 +64,59 @@
         </div>
         
         <form action="/settings" method="POST">
-          <div>
-            <div class="flex-row">
-              <div class="flex-col">
+          <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <label for="ssid" style="width: 120px; margin: 0;">WiFi</label>
+            <input type="text" id="ssid" name="ssid" value="%SSID%" placeholder="WiFi Network" style="flex: 1; margin: 0; max-width: 420px;">
+          </div>
+          
+          <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <label for="password" style="width: 120px; margin: 0;">Password</label>
+            <input type="password" id="password" name="password" value="%PASSWORD%" placeholder="••••••••" style="flex: 1; margin: 0; max-width: 420px;">
+          </div>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="text-align: left;">
+              <input type="checkbox" id="dhcp" name="dhcp" value="on" %DHCP_CHECKED% class="checkbox-inline" onchange="toggleNetworkFields()">
+              <label for="dhcp" class="label-inline">Automatic IP address</label>
+            </div>
+            <button type="button" onclick="resetWiFi()" class="btn-small" style="width: 100px;">Reset WiFi</button>
+          </div>
+          
+          <div id="network-fields">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+              <label for="ip" style="width: 120px; margin: 0;">IP Address:</label>
+              <input type="text" id="ip" name="ip" value="%IP_ADDRESS%" placeholder="172.17.1.159" style="flex: 1; margin: 0; max-width: 420px;">
+            </div>
+            
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+              <label for="gateway" style="width: 120px; margin: 0;">Gateway:</label>
+              <input type="text" id="gateway" name="gateway" value="%GATEWAY%" placeholder="172.17.1.1" style="flex: 1; margin: 0; max-width: 420px;">
+            </div>
+            
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+              <label for="netmask" style="width: 120px; margin: 0;">Netmask:</label>
+              <input type="text" id="netmask" name="netmask" value="%NETMASK%" placeholder="255.255.255.0" style="flex: 1; margin: 0; max-width: 420px;">
+            </div>
+          </div>
+          
+          <div style="margin-bottom: 10px; text-align: left;">
+            <input type="checkbox" id="debug" name="debug" value="on" %DEBUG_CHECKED% class="checkbox-inline" onchange="toggleDebugFields()">
+            <label for="debug" class="label-inline">Enable Debug options</label>
+          </div>
+          
+          <div id="debug-fields">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+              <label for="fw_version" style="width: 120px; margin: 0;">FW Version</label>
+              <input type="text" id="fw_version" name="fw_version" value="%FW_VERSION%" placeholder="2026-1.0.01" style="flex: 1; margin: 0; max-width: 420px;">
+            </div>
+            
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+              <label for="fs_version" style="width: 120px; margin: 0;">FS Version</label>
+              <input type="text" id="fs_version" name="fs_version" value="%FS_VERSION%" placeholder="2026-1.0.01" style="flex: 1; margin: 0; max-width: 420px;">
+            </div>
+            
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+              <div style="text-align: left;">
                 <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% class="checkbox-inline">
                 <label for="gpioviewer" class="label-inline">Enable GPIO Viewer</label>
               </div>
@@ -30,28 +124,31 @@
             </div>
           </div>
           
-          <div>
-            <div class="flex-row">
-              <div class="flex-col">
-                <input type="checkbox" id="updates" name="updates" value="on" %UPDATES_CHECKED% class="checkbox-inline">
-                <label for="updates" class="label-inline">Enable software updates</label>
-              </div>
-              %UPDATES_BUTTON%
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="text-align: left;">
+              <input type="checkbox" id="updates" name="updates" value="on" %UPDATES_CHECKED% class="checkbox-inline" onchange="toggleUpdateFields()">
+              <label for="updates" class="label-inline">Enable Updates</label>
             </div>
+            %UPDATES_BUTTON%
           </div>
           
-          <div>
-            <div class="flex-row">
-              <div class="flex-col">
-                <input type="checkbox" id="reboot" name="reboot" value="on" class="checkbox-inline">
-                <label for="reboot" class="label-inline">Reboot ESP32</label>
-              </div>
-              <input type="submit" value="Submit" class="btn-small">
-            </div>
+          <div id="updateurl-group" style="display: flex; align-items: center; margin-bottom: 10px;">
+            <label for="updateurl" style="width: 120px; margin: 0;">URL</label>
+            <input type="text" id="updateurl" name="updateurl" value="%UPDATE_URL%" placeholder="https://api.github.com/repos/..." style="flex: 1; margin: 0; max-width: 420px;">
+          </div>
+          
+          <div id="githubtoken-group" style="display: flex; align-items: center; margin-bottom: 10px;">
+            <label for="githubtoken" style="width: 120px; margin: 0;">Token</label>
+            <input type="password" id="githubtoken" name="githubtoken" value="%GITHUB_TOKEN%" placeholder="ghp_..." style="flex: 1; margin: 0; max-width: 390px;">
+            <button type="button" onclick="toggleTokenVisibility()" id="token-toggle" style="margin-left: 5px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; background: #f0f0f0; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+          </div>
+          
+          <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+            <input type="submit" value="Save Settings" class="btn-small" style="width: 100px;">
           </div>
         </form>
         
-        <div class="section-divider">
+        <div class="section-divider" style="margin-top: 20px;">
           <a href="/files" class="btn-link">📁 File Manager</a>
         </div>
       </div>

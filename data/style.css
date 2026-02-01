@@ -676,7 +676,7 @@ a#gpioViewerBtn:hover {
   text-decoration: none;
   display: inline-block;
   text-align: center;
-  transition-duration: 0.4s;
+  transition: all 0.2s;
 }
 .btn-update:hover {
   background-color: #e74c3c !important;
