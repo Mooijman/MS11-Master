@@ -50,7 +50,7 @@ bool scanInProgress = false;
 
 IPAddress localIP;
 IPAddress localGateway;
-IPAddress subnet(255, 255, 0, 0);
+IPAddress subnet(255, 255, 255, 0);
 
 // Timer variables
 unsigned long previousMillis = 0;
