@@ -409,19 +409,18 @@ void setup() {
       
       // Send confirmation page
       if (shouldReboot || gpioDisabled) {
-        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Please Wait</title><meta name='viewport' content='width=device-width, initial-scale=1'>";
-        if (shouldReboot) {
-          html += "<meta http-equiv='refresh' content='20;url=/settings'>";
-        }
-        html += "<link rel='icon' href='data:,'><link rel='stylesheet' type='text/css' href='style.css'></head><body>";
-        html += "<div class='topnav'><img src='waacs-logo.png' alt='Waacs Design & Consultancy' style='height: 24px; margin: 50px auto 10px auto; display: block;'></div>";
-        html += "<div class='content'><div class='card-grid'><div class='card'>";
-        html += "<h1 style='color: #555;'>" + message + "</h1>";
-        if (gpioDisabled) {
-          html += "<div style='text-align: right;'><input type='button' value='Reload' onclick='window.location.reload();' style='border: none; color: #FEFCFB; background-color: #000000; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; width: auto; min-width: 120px; margin: 15px 0 5px 0; border-radius: 4px; cursor: pointer;'></div>";
-        }
-        html += "</div></div></div></body></html>";
-        request->send(200, "text/html", html);
+        request->send(LittleFS, "/confirmation.html", "text/html", false, [message, shouldReboot, gpioDisabled](const String& var) -> String {
+          if (var == "MESSAGE") {
+            return message;
+          }
+          if (var == "REFRESH_META") {
+            return shouldReboot ? "<meta http-equiv='refresh' content='20;url=/settings'>" : "";
+          }
+          if (var == "RELOAD_BUTTON") {
+            return gpioDisabled ? "<div style='text-align: right;'><input type='button' value='Reload' onclick='window.location.reload();' style='border: none; color: #FEFCFB; background-color: #000000; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; width: auto; min-width: 120px; margin: 15px 0 5px 0; border-radius: 4px; cursor: pointer;'></div>" : "";
+          }
+          return String();
+        });
         
         if (shouldReboot) {
           // Schedule reboot after 2 seconds to allow browser to receive response
