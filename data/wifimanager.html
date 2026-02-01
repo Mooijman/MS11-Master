@@ -7,18 +7,18 @@
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
 </head>
-<body>
+<body class="card-layout">
   <div class="topnav">
-    <img src="waacs-logo.png" alt="Waacs Design & Consultancy" style="height: 24px; margin: 50px auto 10px auto; display: block;">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
   </div>
   <div class="content">
     <div class="card-grid">
       <div class="card">
         <form action="/" method="POST" onsubmit="return validateForm()">
           <div>
-            <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 8px; gap: 8px;">
-              <button type="button" onclick="scanNetworks()" style="margin: 0;">Scan</button>
-              <select id="ssid-select" onchange="updateSSID()" style="flex: 1; margin: 0;">
+            <div class="flex-row-start">
+              <button type="button" onclick="scanNetworks()" class="btn-large margin-0">Scan</button>
+              <select id="ssid-select" onchange="updateSSID()" class="flex-1 margin-0">
                 <option value="">-- Select Wi-Fi network</option>
               </select>
             </div>
@@ -26,9 +26,9 @@
             
             <input type="password" id ="pass" name="pass" placeholder="Wi-Fi Password">
             
-            <div style="display: flex; align-items: center; margin: 12px 0;">
-              <input type="checkbox" id="dhcp" name="dhcp" onchange="toggleIPFields()" checked style="margin: 0 8px 0 0; display: inline-block;">
-              <label for="dhcp" style="margin: 0; display: inline;">Auto IP-address</label>
+            <div class="flex-col">
+              <input type="checkbox" id="dhcp" name="dhcp" onchange="toggleIPFields()" checked class="checkbox-inline">
+              <label for="dhcp" class="label-inline">Auto IP-address</label>
             </div>
             
             <div id="ip-fields">
@@ -36,8 +36,8 @@
               <input type="text" id ="gateway" name="gateway" placeholder="... and enter fixed gateway" value="">
             </div>
             
-            <div style="text-align: right;">
-              <input type ="submit" value ="Submit">
+            <div class="text-right">
+              <input type ="submit" value ="Submit" class="btn-large">
             </div>
           </div>
           <script>
@@ -59,13 +59,6 @@
                   document.getElementById('gateway').value = '0.0.0.0';
                 }
               }
-              
-              // Alleen tekst feedback - kleur wijziging werkt niet betrouwbaar
-              var submitBtn = document.querySelector('input[type="submit"]');
-              submitBtn.value = 'Submitting...';
-              setTimeout(function() {
-                submitBtn.disabled = true;
-              }, 100);
               
               return true;
             }

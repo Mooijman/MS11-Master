@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Firmware Update</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.png">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body class="card-layout">
+  <div class="topnav">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
+  </div>
+  <div class="content">
+    <div class="card-grid">
+      <div class="card">
+        <div class="header">
+          <h1><img src="hex100.png" alt="" class="icon-inline">Firmware Update</h1>
+          <a href="/" class="card-close">&times;</a>
+        </div>
+        
+        <div class="padding-top-20">
+          <p class="text-left text-muted margin-bottom-20">
+            Upload nieuwe firmware om de ESP32 bij te werken.
+          </p>
+          
+          <form id="updateForm" method="POST" action="/update" enctype="multipart/form-data">
+            <div class="section-divider">
+              <div class="margin-bottom-20">
+                <label for="firmware" class="label-bold">
+                  Selecteer firmware bestand (.bin):
+                </label>
+                <input type="file" id="firmware" name="firmware" accept=".bin" class="file-input">
+              </div>
+              
+              <div class="text-right">
+                <input type="submit" value="Update" class="btn-small btn-update">
+              </div>
+            </div>
+          </form>
+          
+          <div id="progress" class="progress-container">
+            <div class="progress-bar-bg">
+              <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <p id="progressText" class="progress-text"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

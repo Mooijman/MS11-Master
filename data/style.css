@@ -56,26 +56,31 @@ input[type=submit] {
   border: none;
   color: #FEFCFB;
   background-color: #000000;
-  padding: 12px 24px;
+  padding: 3px 8px;
   text-align: center;
   text-decoration: none;
   display: inline-block;
-  font-size: 14px;
+  font-size: 12px;
   width: auto;
-  min-width: 120px;
-  margin: 15px 0 5px 0;
+  min-width: 80px;
+  margin: 0;
   border-radius: 4px;
   transition-duration: 0.4s;
   cursor: pointer;
 }
 
 input[type=submit]:hover {
-  background-color: #e74c3c;
+  background-color: #DAA520;
 }
 
-input[type=submit].submitting {
-  background-color: #1282A2 !important;
-  cursor: not-allowed;
+.btn-small:hover {
+  background-color: #1282A2;
+}
+
+input[type=submit].btn-large {
+  padding: 10px 20px;
+  font-size: 14px;
+  min-width: 80px;
 }
 
 input[type=text], input[type=number], select {
@@ -131,15 +136,15 @@ button {
   border: none;
   color: #FEFCFB;
   background-color: #4A4A4A;
-  padding: 10px 20px;
+  padding: 3px 8px;
   text-align: center;
-  font-size: 14px;
+  font-size: 12px;
   width: auto;
-  min-width: 80px;
+  min-width: 60px;
   border-radius: 4px;
   transition-duration: 0.4s;
   cursor: pointer;
-  margin: 4px;
+  margin: 0;
 }
 
 button:hover {
@@ -182,6 +187,7 @@ a#gpioViewerBtn:hover {
 .card-layout .container {
   max-width: 700px;
   margin: 0 auto;
+  padding: 20px;
 }
 
 .card-layout .card {
@@ -341,6 +347,7 @@ a#gpioViewerBtn:hover {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
+  min-width: 80px;
 }
 
 .card-layout .file-btn-view {
@@ -524,4 +531,257 @@ a#gpioViewerBtn:hover {
 
 .card-layout .back-link:hover {
   text-decoration: underline;
+}
+
+/* Generic utility classes */
+.icon-inline {
+  height: 0.8em;
+  vertical-align: -0.05em;
+  margin-right: 6px;
+}
+
+.icon-large {
+  width: 100px;
+  height: auto;
+  cursor: pointer;
+}
+
+.icon-full {
+  max-width: 100%;
+  height: auto;
+}
+
+.section-divider {
+  margin-bottom: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #ddd;
+}
+
+.horizontal-divider {
+  margin: 15px 0;
+  border: 0;
+  border-top: 1px solid #ddd;
+}
+
+.flex-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 6px 0;
+  gap: 8px;
+}
+
+.flex-row-start {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.flex-col {
+  display: flex;
+  align-items: center;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-muted {
+  color: #666;
+}
+
+.text-dark {
+  color: #555;
+}
+
+.margin-0 {
+  margin: 0;
+}
+
+.margin-top-20 {
+  margin-top: 20px;
+}
+
+.margin-bottom-8 {
+  margin-bottom: 8px;
+}
+
+.margin-bottom-20 {
+  margin-bottom: 20px;
+}
+
+.padding-top-20 {
+  padding-top: 20px;
+}
+
+.padding-large {
+  padding: 40px 20px;
+}
+
+.hidden {
+  display: none;
+}
+
+.checkbox-inline {
+  margin: 0 8px 0 0;
+  display: inline-block;
+}
+
+.label-inline {
+  margin: 0;
+  display: inline;
+}
+
+.label-bold {
+  display: block;
+  text-align: left;
+  margin-bottom: 8px;
+  font-weight: bold;
+  color: #034078;
+}
+
+.file-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.btn-small {
+  margin: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+  min-width: 80px;
+  background-color: #000000;
+  color: #FEFCFB;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+  transition-duration: 0.4s;
+}
+.btn-update:hover {
+  background-color: #e74c3c !important;
+}
+.btn-large {
+  padding: 10px 20px;
+  font-size: 14px;
+  min-width: 80px;
+}
+
+.btn-full {
+  width: 100%;
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+input[type=submit].btn-full {
+  width: 100%;
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+.btn-link {
+  display: block;
+  background-color: #4A4A4A;
+  color: white;
+  padding: 12px;
+  text-decoration: none;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.btn-link:hover {
+  background-color: #764ba2;
+}
+
+.btn-secondary {
+  background-color: #4A4A4A;
+  color: white;
+  padding: 3px 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background-color 0.3s;
+  min-width: 80px;
+  display: inline-block;
+  text-align: center;
+}
+
+.btn-secondary:hover {
+  background-color: #DAA520;
+}
+
+.btn-reload {
+  border: none;
+  color: #FEFCFB;
+  background-color: #000000;
+  padding: 12px 24px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 14px;
+  width: auto;
+  min-width: 120px;
+  margin: 15px 0 5px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition-duration: 0.4s;
+}
+
+.btn-reload:hover {
+  background-color: #1282A2;
+}
+
+.progress-container {
+  display: none;
+  margin-top: 20px;
+}
+
+.progress-bar-bg {
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 30px;
+  margin-bottom: 10px;
+}
+
+.progress-bar {
+  background-color: #1282A2;
+  height: 100%;
+  width: 0%;
+  transition: width 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.progress-text {
+  text-align: center;
+  color: #666;
+  font-size: 14px;
 }

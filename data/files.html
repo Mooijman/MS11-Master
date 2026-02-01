@@ -14,7 +14,7 @@
   <div class="container">
     <div class="card">
       <div class="header">
-        <h1><img src="hex100.png" alt="" style="height: 0.8em; vertical-align: -0.05em; margin-right: 6px;">Filemanager</h1>
+        <h1><img src="hex100.png" alt="" class="icon-inline">Filemanager</h1>
         <a href="/settings" class="card-close">&times;</a>
       </div>
 
@@ -28,7 +28,7 @@
         <div class="file-actions">
           <button class="file-btn file-btn-upload" onclick="document.getElementById('uploadInput').click()">Upload</button>
           <button class="file-btn file-btn-refresh" onclick="refreshFiles()">Refresh</button>
-          <input type="file" id="uploadInput" onchange="uploadFile(this.files[0])" style="display: none;">
+          <input type="file" id="uploadInput" onchange="uploadFile(this.files[0])" class="hidden">
         </div>
       </div>
     </div>
@@ -41,10 +41,10 @@
         <div class="modal-title" id="modalTitle"></div>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
-      <div id="imageContainer" style="display: none;">
-        <hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">
-        <img id="imagePreview" style="max-width: 100%; height: auto;">
-        <hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">
+      <div id="imageContainer" class="hidden">
+        <hr class="horizontal-divider">
+        <img id="imagePreview" class="icon-full">
+        <hr class="horizontal-divider">
       </div>
       <textarea id="fileContent"></textarea>
       <div class="modal-actions">
