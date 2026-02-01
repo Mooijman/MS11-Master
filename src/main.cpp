@@ -36,6 +36,7 @@ String ip;
 String gateway;
 String useDHCP;
 String gpioViewerEnabled;
+String otaEnabled;
 
 // File paths to save input values permanently
 const char* globalConfigPath = "/global.conf";
@@ -127,6 +128,8 @@ void readGlobalConfig() {
       useDHCP = line.substring(5);
     } else if (line.startsWith("gpioviewer=")) {
       gpioViewerEnabled = line.substring(11);
+    } else if (line.startsWith("ota=")) {
+      otaEnabled = line.substring(4);
     }
   }
   file.close();
@@ -145,6 +148,7 @@ void writeGlobalConfig() {
   file.println("gateway=" + gateway);
   file.println("dhcp=" + useDHCP);
   file.println("gpioviewer=" + gpioViewerEnabled);
+  file.println("ota=" + otaEnabled);
   file.close();
   Serial.println("Global config saved");
 }
@@ -262,6 +266,12 @@ void setup() {
   // Set default GPIO Viewer state to off if not set
   if (gpioViewerEnabled == "") {
     gpioViewerEnabled = "off";
+    writeGlobalConfig();
+  }
+  
+  // Set default OTA state to on if not set
+  if (otaEnabled == "") {
+    otaEnabled = "on";
     writeGlobalConfig();
   }
   
@@ -500,10 +510,14 @@ void setup() {
     
     server.serveStatic("/", LittleFS, "/");
     
-    // Start ArduinoOTA
-    ArduinoOTA.setHostname("ESP32-Base");
-    ArduinoOTA.begin();
-    Serial.println("ArduinoOTA started");
+    // Start ArduinoOTA if enabled
+    if (otaEnabled == "on" || otaEnabled == "true") {
+      ArduinoOTA.setHostname("ESP32-Base");
+      ArduinoOTA.begin();
+      Serial.println("ArduinoOTA started");
+    } else {
+      Serial.println("ArduinoOTA disabled");
+    }
     
     server.begin();
     Serial.println("Web server started");
@@ -655,8 +669,10 @@ void loop() {
     dnsServer.processNextRequest();
   }
   
-  // Handle ArduinoOTA updates
-  ArduinoOTA.handle();
+  // Handle ArduinoOTA updates (only if enabled and not in AP mode)
+  if (!isAPMode && (otaEnabled == "on" || otaEnabled == "true")) {
+    ArduinoOTA.handle();
+  }
 }
 
 // Function to show reboot message and restart
