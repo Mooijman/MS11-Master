@@ -6,6 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <style>
+    .btn-update:hover {
+      background-color: #e74c3c !important;
+      border-color: #c0392b !important;
+    }
+  </style>
 </head>
 <body class="card-layout">
   <div class="topnav">
@@ -27,42 +33,34 @@
             <div id="update-content">
               <!-- Firmware Info -->
               <div class="margin-bottom-20">
-                <p class="text-left text-muted">
-                  <strong>FW:</strong> <span id="fw-info">-</span><br>
-                  <strong>FS:</strong> <span id="fs-info">-</span><br>
-                  <span id="update-availability" style="font-style:italic;">-</span>
+                <p class="text-left text-muted" style="line-height: 1.6;">
+                  <span style="display: inline-block; width: 30px;"><strong>FW</strong></span><span id="fw-info">-</span><br>
+                  <span style="display: inline-block; width: 30px;"><strong>FS</strong></span><span id="fs-info">-</span>
+                </p>
+                <p style="font-style:italic; color:#999; margin-top:10px; text-align:left;">
+                  <span id="update-availability">-</span>
                 </p>
               </div>
               
               <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
               
-              <!-- Check button -->
-              <div id="check-section" class="text-right">
-                <button onclick="checkForUpdate()" class="btn-small">Check</button>
+              <!-- Update button (shown when update available) -->
+              <div id="update-section" class="text-right" style="display:none;">
+                <button id="update-btn" onclick="installUpdate('both')" class="btn-small btn-update">Update</button>
               </div>
             </div>
             
             <div id="update-disabled" style="display:none;">
-              <p class="text-left text-muted">
-                <strong>FW:</strong> <span id="fw-info-disabled">-</span><br>
-                <strong>FS:</strong> <span id="fs-info-disabled">-</span><br>
-                <span style="font-style:italic;color:#999;">updates disabled</span>
+              <p class="text-left text-muted" style="line-height: 1.6;">
+                <span style="display: inline-block; width: 30px;"><strong>FW</strong></span><span id="fw-info-disabled">-</span><br>
+                <span style="display: inline-block; width: 30px;"><strong>FS</strong></span><span id="fs-info-disabled">-</span>
               </p>
+              <p style="font-style:italic;color:#999;margin-top:10px;text-align:left;">updates disabled</p>
               
               <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
             </div>
             
             <div id="update-status-section" style="display:none;" class="margin-top-20">
-              <div class="update-status margin-bottom-20">
-                <div class="flex-row">
-                  <div class="flex-col text-left">
-                    <p><strong>Beschikbare Versie:</strong> <span id="remote-version">-</span></p>
-                    <p><strong>Status:</strong> <span id="update-status">Idle</span></p>
-                    <p class="text-muted"><small>Laatst gecontroleerd: <span id="last-check">-</span></small></p>
-                  </div>
-                </div>
-              </div>
-              
               <div id="update-error" class="margin-bottom-10" style="display:none;color:#e74c3c;">
                 <p><strong>Fout:</strong> <span id="error-message"></span></p>
               </div>
@@ -96,17 +94,21 @@
       fetch('/api/update/status')
         .then(response => response.json())
         .then(data => {
+          // Strip fw-/fs- prefix from version strings
+          const fwVersion = data.currentFirmwareVersion.replace(/^fw-/, '');
+          const fsVersion = data.currentFilesystemVersion.replace(/^fs-/, '');
+          
           // Update firmware info section
-          document.getElementById('fw-info').textContent = data.currentFirmwareVersion;
-          document.getElementById('fs-info').textContent = data.currentFilesystemVersion;
+          document.getElementById('fw-info').textContent = fwVersion;
+          document.getElementById('fs-info').textContent = fsVersion;
           
           // Check if updates are enabled
           if (!data.updatesEnabled) {
             // Show disabled view
             document.getElementById('update-content').style.display = 'none';
             document.getElementById('update-disabled').style.display = 'block';
-            document.getElementById('fw-info-disabled').textContent = data.currentFirmwareVersion;
-            document.getElementById('fs-info-disabled').textContent = data.currentFilesystemVersion;
+            document.getElementById('fw-info-disabled').textContent = fwVersion;
+            document.getElementById('fs-info-disabled').textContent = fsVersion;
             document.getElementById('update-status-section').style.display = 'none';
             return; // Don't process further if updates disabled
           }
@@ -115,43 +117,36 @@
           document.getElementById('update-content').style.display = 'block';
           document.getElementById('update-disabled').style.display = 'none';
           
-          document.getElementById('remote-version').textContent = data.remoteVersion || '-';
-          
-          // Update status text
-          const statusText = ['Idle', 'Controleren...', 'Update Beschikbaar', 'Downloaden...', 'Installeren...', 'Succesvol', 'Fout'];
-          document.getElementById('update-status').textContent = statusText[data.state] || 'Onbekend';
-          
-          // Show last check time
-          if (data.lastCheck > 0) {
-            const checkDate = new Date(data.lastCheck);
-            document.getElementById('last-check').textContent = checkDate.toLocaleString('nl-NL');
-          }
-          
-          // Show error if present
-          if (data.lastError && data.lastError.length > 0) {
-            document.getElementById('update-error').style.display = 'block';
-            document.getElementById('error-message').textContent = data.lastError;
-          } else {
-            document.getElementById('update-error').style.display = 'none';
-          }
-          
           // Update availability text
           if (data.firmwareAvailable || data.littlefsAvailable) {
             document.getElementById('update-availability').textContent = 'update available';
             document.getElementById('update-availability').style.color = '#27ae60';
             document.getElementById('update-actions').style.display = 'block';
             document.getElementById('update-status-section').style.display = 'block';
+            // Show Update button
+            document.getElementById('update-section').style.display = 'block';
           } else if (data.lastCheck > 0) {
-            document.getElementById('update-availability').textContent = 'up to date';
+            document.getElementById('update-availability').textContent = 'up-to-date';
             document.getElementById('update-availability').style.color = '#999';
             document.getElementById('update-actions').style.display = 'none';
-            // Show status section if we've checked before
-            if (data.state > 0) {
-              document.getElementById('update-status-section').style.display = 'block';
-            }
+            document.getElementById('update-status-section').style.display = 'none';
+            // Hide Update button
+            document.getElementById('update-section').style.display = 'none';
           } else {
-            document.getElementById('update-availability').textContent = '';
+            document.getElementById('update-availability').textContent = '-';
             document.getElementById('update-actions').style.display = 'none';
+            document.getElementById('update-status-section').style.display = 'none';
+            // Hide Update button
+            document.getElementById('update-section').style.display = 'none';
+          }
+          
+          // Show error if present
+          if (data.lastError && data.lastError.length > 0) {
+            document.getElementById('update-error').style.display = 'block';
+            document.getElementById('error-message').textContent = data.lastError;
+            document.getElementById('update-status-section').style.display = 'block';
+          } else {
+            document.getElementById('update-error').style.display = 'none';
           }
           
           // Show progress during download/install
@@ -243,9 +238,12 @@
       });
     }
     
-    // Initial load and periodic refresh
+    // Initial load - check once on page open
     updateStatus();
-    setInterval(updateStatus, 60000); // Refresh every minute when idle
+    // Automatically check for updates on page load
+    setTimeout(() => {
+      checkForUpdate();
+    }, 1000);
   </script>
 </body>
 </html>

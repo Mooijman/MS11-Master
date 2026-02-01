@@ -83,6 +83,7 @@ String pass;
 String ip;
 String gateway;
 String useDHCP;
+String githubToken;
 String gpioViewerEnabled;
 String otaEnabled;
 String updatesEnabled;
@@ -239,6 +240,9 @@ void readGlobalConfig() {
     } else if (line.startsWith("updateUrl=")) {
       updateUrl = line.substring(10);
       updateUrl.trim();
+    } else if (line.startsWith("githubToken=")) {
+      githubToken = line.substring(12);
+      githubToken.trim();
     }
   }
   file.close();
@@ -322,6 +326,12 @@ void writeGlobalConfig() {
     updateUrl = "https://api.github.com/repos/Mooijman/ESP32-baseline/releases/latest";
   }
   file.println("updateUrl=" + updateUrl);
+  
+  // GitHub token (optional, for private repos)
+  if (!githubToken.isEmpty()) {
+    file.println("githubToken=" + githubToken);
+  }
+  
   file.flush();
   file.close();
   
@@ -368,6 +378,13 @@ bool checkGitHubRelease() {
   
   http.begin(client, apiUrl);
   http.addHeader("User-Agent", "ESP32-OTA-Client");
+  
+  // Add GitHub token for private repository access
+  if (githubToken && githubToken.length() > 0) {
+    http.addHeader("Authorization", "token " + githubToken);
+    Serial.println("Using GitHub token for authentication");
+  }
+  
   http.setTimeout(15000); // 15 second timeout
   
   int httpCode = http.GET();
