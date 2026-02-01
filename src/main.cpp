@@ -73,8 +73,8 @@ void initLittleFS() {
   Serial.println("LittleFS mounted successfully");
 }
 
-// Read File from LittleFS
-String readFile(fs::FS &fs, const char * path){
+// Read first line from file in LittleFS
+String readFirstLine(fs::FS &fs, const char * path){
   Serial.printf("Reading file: %s\r\n", path);
 
   File file = fs.open(path);
@@ -261,7 +261,7 @@ void setup() {
 
   // Load values saved in LittleFS
   readGlobalConfig();
-  pass = readFile(LittleFS, passPath);
+  pass = readFirstLine(LittleFS, passPath);
   
   // Set default GPIO Viewer state to off if not set
   if (gpioViewerEnabled == "") {
