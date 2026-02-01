@@ -538,8 +538,6 @@ void setup() {
       }
     });
     
-    server.serveStatic("/", LittleFS, "/");
-    
     // Start ArduinoOTA if enabled
     if (otaEnabled == "on" || otaEnabled == "true") {
       ArduinoOTA.setHostname("ESP32-Base");
@@ -626,8 +624,6 @@ void setup() {
       request->send(200, "application/json", cachedScanResults);
     });
     
-    server.serveStatic("/", LittleFS, "/");
-    
     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
       int params = request->params();
       bool settingsChanged = false;
@@ -702,6 +698,10 @@ void setup() {
       delay(3000);
       ESP.restart();
     });
+    
+    // Serve static files (CSS, images, etc.) - must be last
+    server.serveStatic("/", LittleFS, "/");
+    
     server.begin();
   }  // End of else (AP mode)
 }  // End of setup()
