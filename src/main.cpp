@@ -79,6 +79,28 @@ void initLittleFS() {
   Serial.println("LittleFS mounted successfully");
 }
 
+// Escape string for JSON
+String jsonEscape(String str) {
+  String result = "";
+  for (int i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (c == '"') {
+      result += "\\\"";
+    } else if (c == '\\') {
+      result += "\\\\";
+    } else if (c == '\n') {
+      result += "\\n";
+    } else if (c == '\r') {
+      result += "\\r";
+    } else if (c == '\t') {
+      result += "\\t";
+    } else {
+      result += c;
+    }
+  }
+  return result;
+}
+
 // Read first line from file in LittleFS
 String readFirstLine(fs::FS &fs, const char * path){
   Serial.printf("Reading file: %s\r\n", path);
@@ -582,7 +604,7 @@ void setup() {
           for (int i = 0; i < n; ++i) {
             if (i) json += ",";
             json += "{";
-            json += "\"ssid\":\"" + WiFi.SSID(i) + "\"";
+            json += "\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\"";
             json += ",\"rssi\":" + String(WiFi.RSSI(i));
             json += ",\"encryption\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false");
             json += "}";
