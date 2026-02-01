@@ -37,6 +37,8 @@ String gateway;
 String useDHCP;
 String gpioViewerEnabled;
 String otaEnabled;
+String updatesEnabled;
+String updateUrl;
 
 // File paths to save input values permanently
 const char* globalConfigPath = "/global.conf";
@@ -132,24 +134,28 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
     Serial.println("- failed to open temp file for writing");
     return;
   }
-  if(file.print(message)){
-    file.flush();
-    file.close();
-    
-    // Remove old file if exists
-    if(fs.exists(path)){
-      fs.remove(path);
-    }
-    
-    // Rename temp to final
-    if(fs.rename(tempPath.c_str(), path)){
-      Serial.println("- file written (atomic)");
-    } else {
-      Serial.println("- atomic rename failed");
-    }
-  } else {
-    file.close();
+  
+  bool writeSuccess = file.print(message);
+  file.flush();
+  file.close();
+  
+  if(!writeSuccess){
     Serial.println("- write failed");
+    fs.remove(tempPath.c_str()); // Clean up temp file
+    return;
+  }
+  
+  // Remove old file if exists
+  if(fs.exists(path)){
+    fs.remove(path);
+  }
+  
+  // Rename temp to final
+  if(fs.rename(tempPath.c_str(), path)){
+    Serial.println("- file written (atomic)");
+  } else {
+    Serial.println("- atomic rename failed");
+    fs.remove(tempPath.c_str()); // Clean up temp file
   }
 }
 
@@ -176,6 +182,10 @@ void readGlobalConfig() {
       gpioViewerEnabled = line.substring(11);
     } else if (line.startsWith("ota=")) {
       otaEnabled = line.substring(4);
+    } else if (line.startsWith("updates=")) {
+      updatesEnabled = line.substring(8);
+    } else if (line.startsWith("updateUrl=")) {
+      updateUrl = line.substring(10);
     }
   }
   file.close();
@@ -198,6 +208,8 @@ void writeGlobalConfig() {
   file.println("dhcp=" + useDHCP);
   file.println("gpioviewer=" + gpioViewerEnabled);
   file.println("ota=" + otaEnabled);
+  file.println("updates=" + updatesEnabled);
+  file.println("updateUrl=" + updateUrl);
   file.flush();
   file.close();
   
@@ -211,6 +223,7 @@ void writeGlobalConfig() {
     Serial.println("Global config saved (atomic)");
   } else {
     Serial.println("Failed to rename config file");
+    LittleFS.remove(tempPath); // Clean up temp file
   }
 }
 
@@ -266,6 +279,7 @@ bool initWiFi() {
       writeFile(LittleFS, passPath, "");
       return false;
     }
+    delay(10); // Prevent busy-wait, allow other tasks to run
   }
 
   Serial.println(WiFi.localIP());
@@ -352,17 +366,25 @@ void setup() {
     server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
       String gpioViewerStatus = gpioViewerEnabled;
       bool gpioEnabled = (gpioViewerStatus == "true" || gpioViewerStatus == "on");
+      String updatesStatus = updatesEnabled;
+      bool updatesEnabledBool = (updatesStatus == "true" || updatesStatus == "on");
       
-      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled](const String& var) -> String {
+      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool](const String& var) -> String {
         if (var == "GPIOVIEWER_CHECKED") {
           return gpioEnabled ? "checked" : "";
         }
         if (var == "GPIOVIEWER_BUTTON") {
           if (gpioEnabled) {
             String ip = WiFi.localIP().toString();
-            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" id=\"gpioViewerBtn\" style=\"background-color: #4A4A4A; color: white; padding: 3px 8px; text-decoration: none; border-radius: 4px; font-size: 12px; white-space: nowrap; transition: background-color 0.3s; min-width: 60px; display: inline-block; text-align: center;\">Open</a>";
+            return "<a href=\"http://" + ip + ":5555\" target=\"_blank\" class=\"btn-small\">Open</a>";
           }
           return "";
+        }
+        if (var == "UPDATES_CHECKED") {
+          return updatesEnabledBool ? "checked" : "";
+        }
+        if (var == "UPDATE_URL") {
+          return updateUrl;
         }
         return String();
       });
@@ -372,6 +394,7 @@ void setup() {
     server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
       bool shouldReboot = false;
       bool gpioDisabled = false;
+      bool configChanged = false;
       String message = "";
       
       Serial.println("Settings POST received");
@@ -386,7 +409,7 @@ void setup() {
           gpioViewerEnabled = "on";
           updateGpioViewerSetting();
           Serial.println("GPIO Viewer enabled - rebooting...");
-          message = "<img src='hex100.png' alt='' style='height: 0.8em; vertical-align: -0.05em; margin-right: 6px;'>GPIO Viewer enabled - please wait";
+          message = "<img src='hex100.png' alt='' class='icon-inline'>GPIO Viewer enabled - please wait";
           shouldReboot = true;
         }
       } else {
@@ -395,15 +418,46 @@ void setup() {
           gpioViewerEnabled = "off";
           updateGpioViewerSetting();
           Serial.println("GPIO Viewer disabled - powercycle required");
-          message = "<img src='hex100.png' alt='' style='height: 0.8em; vertical-align: -0.05em; margin-right: 6px;'>Powercycle ESP32 now!";
+          message = "<img src='hex100.png' alt='' class='icon-inline'>Powercycle ESP32 now!";
           gpioDisabled = true;
         }
+      }
+      
+      // Check updates checkbox
+      if (request->hasParam("updates", true)) {
+        // Checkbox is checked - enable updates
+        if (updatesEnabled != "on" && updatesEnabled != "true") {
+          updatesEnabled = "on";
+          configChanged = true;
+          Serial.println("Software updates enabled");
+        }
+        // Get the update URL
+        if (request->hasParam("updateurl", true)) {
+          String newUpdateUrl = request->getParam("updateurl", true)->value();
+          if (newUpdateUrl != updateUrl) {
+            updateUrl = newUpdateUrl;
+            configChanged = true;
+            Serial.println("Update URL changed to: " + updateUrl);
+          }
+        }
+      } else {
+        // Checkbox is not checked - disable updates
+        if (updatesEnabled == "on" || updatesEnabled == "true") {
+          updatesEnabled = "off";
+          configChanged = true;
+          Serial.println("Software updates disabled");
+        }
+      }
+      
+      // Save config changes if needed
+      if (configChanged) {
+        writeGlobalConfig();
       }
       
       // Check if reboot checkbox was checked
       if (request->hasParam("reboot", true)) {
         Serial.println("Reboot requested");
-        message = "<img src='hex100.png' alt='' style='height: 0.8em; vertical-align: -0.05em; margin-right: 6px;'>Rebooting - please wait";
+        message = "<img src='hex100.png' alt='' class='icon-inline'>Rebooting - please wait";
         shouldReboot = true;
       }
       
@@ -417,7 +471,7 @@ void setup() {
             return shouldReboot ? "<meta http-equiv='refresh' content='20;url=/settings'>" : "";
           }
           if (var == "RELOAD_BUTTON") {
-            return gpioDisabled ? "<div style='text-align: right;'><input type='button' value='Reload' onclick='window.location.reload();' style='border: none; color: #FEFCFB; background-color: #000000; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; width: auto; min-width: 120px; margin: 15px 0 5px 0; border-radius: 4px; cursor: pointer;'></div>" : "";
+            return gpioDisabled ? "<div class='text-right'><input type='button' value='Reload' onclick='window.location.reload();' class='btn-reload'></div>" : "";
           }
           return String();
         });
@@ -436,6 +490,11 @@ void setup() {
     // File manager page
     server.on("/files", HTTP_GET, [](AsyncWebServerRequest *request) {
       request->send(LittleFS, "/files.html", "text/html");
+    });
+    
+    // Firmware update page
+    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(LittleFS, "/update.html", "text/html");
     });
     
     // API: List all files
@@ -537,6 +596,9 @@ void setup() {
       }
     });
     
+    // Serve static files (CSS, images, etc.) - must be last
+    server.serveStatic("/", LittleFS, "/");
+    
     // Start ArduinoOTA if enabled
     if (otaEnabled == "on" || otaEnabled == "true") {
       ArduinoOTA.setHostname("ESP32-Base");
@@ -554,6 +616,12 @@ void setup() {
     Serial.println("Setting AP (Access Point)");
     isAPMode = true;
     
+    // Reset WiFi state properly before starting AP mode
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_AP);
+    delay(100);
+    
     // Show connecting message on OLED
     display.clear();
     display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -570,6 +638,12 @@ void setup() {
     // Start DNS server for captive portal
     dnsServer.start(DNS_PORT, "*", IP);
     Serial.println("DNS server started for captive portal");
+    
+    // Start WiFi scan immediately so results are ready when portal opens
+    WiFi.scanNetworks(true);
+    scanInProgress = true;
+    lastScanTime = millis();
+    Serial.println("Initial WiFi scan started");
 
     // Web Server Root URL - Captive Portal
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){

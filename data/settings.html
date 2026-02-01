@@ -6,46 +6,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <script>
+    function toggleUpdateUrl() {
+      var updatesEnabled = document.getElementById('updates').checked;
+      var updateUrlField = document.getElementById('update-url-field');
+      updateUrlField.style.display = updatesEnabled ? 'block' : 'none';
+    }
+  </script>
 </head>
 <body class="card-layout">
   <div class="topnav">
-    <img src="waacs-logo.png" alt="Waacs Design & Consultancy" style="height: 24px; margin: 50px auto 10px auto; display: block;">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
   </div>
   <div class="content">
     <div class="card-grid">
       <div class="card">
         <div class="header">
-          <h1><img src="hex100.png" alt="" style="height: 0.8em; vertical-align: -0.05em; margin-right: 6px;">Settings</h1>
+          <h1><img src="hex100.png" alt="" class="icon-inline">Settings</h1>
           <a href="/" class="card-close">&times;</a>
         </div>
         
         <form action="/settings" method="POST">
-          <div style="margin-bottom: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin: 12px 0;">
-              <div style="display: flex; align-items: center;">
-                <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% style="margin: 0 8px 0 0; display: inline-block;">
-                <label for="gpioviewer" style="margin: 0; display: inline;">Enable GPIO Viewer</label>
+          <div>
+            <div class="flex-row">
+              <div class="flex-col">
+                <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% class="checkbox-inline">
+                <label for="gpioviewer" class="label-inline">Enable GPIO Viewer</label>
               </div>
               %GPIOVIEWER_BUTTON%
             </div>
           </div>
           
           <div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin: 12px 0;">
-              <div style="display: flex; align-items: center;">
-                <input type="checkbox" id="reboot" name="reboot" value="on" style="margin: 0 8px 0 0; display: inline-block;">
-                <label for="reboot" style="margin: 0; display: inline;">Reboot ESP32</label>
+            <div class="flex-row">
+              <div class="flex-col">
+                <input type="checkbox" id="updates" name="updates" value="on" %UPDATES_CHECKED% onchange="toggleUpdateUrl()" class="checkbox-inline">
+                <label for="updates" class="label-inline">Enable software updates</label>
               </div>
-              <input type="submit" value="Submit" style="margin: 0; padding: 3px 8px; font-size: 12px; border: none; border-radius: 4px; cursor: pointer; min-width: 60px;">
+            </div>
+            <div id="update-url-field" style="display:none;">
+              <input type="text" id="updateurl" name="updateurl" placeholder="update-url" value="%UPDATE_URL%" class="input-full">
+            </div>
+          </div>
+          
+          <div>
+            <div class="flex-row">
+              <div class="flex-col">
+                <input type="checkbox" id="reboot" name="reboot" value="on" class="checkbox-inline">
+                <label for="reboot" class="label-inline">Reboot ESP32</label>
+              </div>
+              <input type="submit" value="Submit" class="btn-small">
             </div>
           </div>
         </form>
         
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
-          <a href="/files" style="display: block; background-color: #4A4A4A; color: white; padding: 12px; text-decoration: none; border-radius: 4px; text-align: center; font-size: 16px; transition: background-color 0.3s;" onmouseover="this.style.backgroundColor='#764ba2'" onmouseout="this.style.backgroundColor='#4A4A4A'">📁 File Manager</a>
+        <div class="section-divider">
+          <a href="/files" class="btn-link">📁 File Manager</a>
         </div>
       </div>
     </div>
   </div>
+  <script>
+    toggleUpdateUrl();
+  </script>
 </body>
 </html>
