@@ -320,10 +320,10 @@ bool downloadAndInstallFirmware(String url) {
     return false;
   }
   
-  // Display update message on OLED
+  // Display update message on OLED - FW specific
   display.clear();
   display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Updating");
+  display.drawString(0, 0, "Updating FW");
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 30, "Please Wait...");
   display.drawString(0, 45, "DO NOT POWER OFF");
@@ -447,6 +447,14 @@ bool downloadAndInstallFirmware(String url) {
   updateInfo.state = UPDATE_SUCCESS;
   updateInfo.downloadProgress = 100;
   
+  // Display success message on OLED
+  display.clear();
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 15, "Update done");
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 40, "Powercycle now");
+  display.display();
+  
   // Update version in current.info (strip fw- prefix if present)
   String newVersion = updateInfo.remoteVersion;
   if (newVersion.startsWith("fw-")) {
@@ -465,10 +473,10 @@ bool downloadAndInstallLittleFS(String url) {
     return false;
   }
   
-  // Display update message on OLED
+  // Display update message on OLED - FS specific
   display.clear();
   display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Updating");
+  display.drawString(0, 0, "Updating FS");
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 30, "Please Wait...");
   display.drawString(0, 45, "DO NOT POWER OFF");
@@ -595,6 +603,14 @@ bool downloadAndInstallLittleFS(String url) {
   Serial.println("LittleFS update successful!");
   updateInfo.state = UPDATE_SUCCESS;
   updateInfo.downloadProgress = 100;
+  
+  // Display success message on OLED
+  display.clear();
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 15, "Update done");
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 40, "Powercycle now");
+  display.display();
   
   // Update version in current.info (strip fw- prefix if present)
   String newVersion = updateInfo.remoteVersion;
