@@ -392,7 +392,7 @@ bool downloadAndInstallFirmware(String url) {
     size_t available = stream->available();
     
     if (available) {
-      int c = stream->readBytes(buff, min(available, sizeof(buff)));
+      int c = stream->readBytes(buff, min(available, (size_t)sizeof(buff)));
       
       if (c > 0) {
         if (Update.write(buff, c) != c) {
@@ -549,7 +549,7 @@ bool downloadAndInstallLittleFS(String url) {
     size_t available = stream->available();
     
     if (available) {
-      int c = stream->readBytes(buff, min(available, sizeof(buff)));
+      int c = stream->readBytes(buff, min(available, (size_t)sizeof(buff)));
       
       if (c > 0) {
         if (Update.write(buff, c) != c) {
