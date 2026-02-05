@@ -203,7 +203,6 @@
           // Auto reload after successful firmware update (not filesystem)
           if (data.state === 5 && !data.filesystemUpdateDone) { // SUCCESS - firmware only
             setTimeout(() => {
-              alert('Firmware update succesvol! Device herstart...');
               window.location.reload();
             }, 2000);
           } else if (data.state === 5 && data.filesystemUpdateDone) { // SUCCESS - filesystem
