@@ -206,6 +206,9 @@
               window.location.reload();
             }, 2000);
           } else if (data.state === 5 && data.filesystemUpdateDone) { // SUCCESS - filesystem
+            // Hide all content except reboot-required box
+            document.getElementById('update-content').style.display = 'none';
+            document.getElementById('update-disabled').style.display = 'none';
             document.getElementById('progress-ota').style.display = 'none';
             document.getElementById('reboot-required').style.display = 'block';
             document.getElementById('update-status-section').style.display = 'block';
