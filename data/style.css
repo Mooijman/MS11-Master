@@ -983,7 +983,7 @@ a#gpioViewerBtn:hover {
 }
 
 .update-warning-box {
-  margin-top: var(--spacing-3xl);
+  margin-top: var(--spacing-lg);
   padding: var(--spacing-2xl);
   background-color: #ffebee;
   border: 1px solid #ef5350;
