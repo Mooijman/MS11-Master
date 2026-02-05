@@ -149,9 +149,20 @@ String jsonEscape(String str) {
 bool compareVersions(String remoteVer, String currentVer) {
   if (remoteVer.length() == 0 || currentVer.length() == 0) return false;
   
-  // Format: 2026-1.0.01
+  // Strip prefixes for comparison: fw-, fs-
+  String remote = remoteVer;
+  String current = currentVer;
+  
+  // Remove version prefixes (fw- and fs- only, no v prefix expected)
+  if (remote.startsWith("fw-")) remote = remote.substring(3);    // fw-2026-1.0.07 → 2026-1.0.07
+  if (remote.startsWith("fs-")) remote = remote.substring(3);    // fs-2026-1.0.07 → 2026-1.0.07
+  
+  if (current.startsWith("fw-")) current = current.substring(3);
+  if (current.startsWith("fs-")) current = current.substring(3);
+  
+  // Format: 2026-1.0.01 (NO v prefix)
   // Simply compare strings (lexicographic comparison works for this format)
-  return remoteVer > currentVer;
+  return remote > current;
 }
 
 // Save update info to NVS
