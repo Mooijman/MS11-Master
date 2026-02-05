@@ -150,8 +150,15 @@
           document.getElementById('update-content').style.display = 'block';
           document.getElementById('update-disabled').style.display = 'none';
           
-          // Update availability text - use grey color for both
-          if (data.firmwareAvailable || data.littlefsAvailable) {
+          // Check for error state first
+          if (data.state === 6 && data.lastError && data.lastError.length > 0) {
+            // Show error in red italic on the update-availability line
+            document.getElementById('update-availability').innerHTML = '<span style="color: #d9534f; font-style: italic;">Update failed: ' + data.lastError + '</span>';
+            // Hide Update button
+            document.getElementById('update-section').style.display = 'none';
+            document.getElementById('reinstall-section').style.display = 'none';
+          } else if (data.firmwareAvailable || data.littlefsAvailable) {
+            // Update available
             document.getElementById('update-availability').textContent = 'update available';
             document.getElementById('update-availability').style.color = '#999';
             // Show Update button and set correct type
@@ -166,6 +173,7 @@
             document.getElementById('update-section').style.display = 'block';
             document.getElementById('reinstall-section').style.display = 'none';
           } else if (data.lastCheck > 0) {
+            // Up-to-date
             document.getElementById('update-availability').textContent = 'up-to-date';
             document.getElementById('update-availability').style.color = '#999';
             // Hide Update button
@@ -192,14 +200,8 @@
             document.getElementById('reinstall-section').style.display = 'none';
           }
           
-          // Show error if present
-          if (data.lastError && data.lastError.length > 0) {
-            document.getElementById('update-error').style.display = 'block';
-            document.getElementById('error-message').textContent = data.lastError;
-            document.getElementById('update-status-section').style.display = 'block';
-          } else {
-            document.getElementById('update-error').style.display = 'none';
-          }
+          // Hide the separate error box since error is now shown on update-availability line
+          document.getElementById('update-error').style.display = 'none';
           
           // Show progress during download/install
           if (data.state === 3 || data.state === 4) { // DOWNLOADING or INSTALLING
