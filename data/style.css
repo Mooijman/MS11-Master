@@ -256,6 +256,10 @@ input[type=submit].btn-full {
   border-color: var(--color-danger-dark) !important;
 }
 
+.btn-i2c:hover {
+  background-color: var(--color-accent-purple) !important;
+}
+
 .btn-reinstall {
   background-color: var(--color-neutral-black);
   border-color: var(--color-neutral-black);

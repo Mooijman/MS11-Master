@@ -70,8 +70,8 @@
               </div>
               
               <div id="reboot-required" class="reboot-warning-box hidden">
-                <p class="reboot-warning-text"><strong>⚠️ Filesystem updated.</strong></p>
-                <p class="reboot-warning-text-spacing">Power cycle the device now.</p>
+                <p class="reboot-warning-text"><strong>⚠️ Rebooting device.</strong></p>
+                <p class="reboot-warning-text-spacing">Please wait...</p>
               </div>
             </div>
           </div>
@@ -220,16 +220,11 @@
             }
           }
           
-          // Auto reload after successful firmware update (not filesystem)
+          // Auto reload after successful update (firmware or filesystem)
           if (data.state === 6) { // ERROR
             forcedUpdateInProgress = false;
           }
-          if (data.state === 5 && !data.filesystemUpdateDone) { // SUCCESS - firmware only
-            forcedUpdateInProgress = false;
-            setTimeout(() => {
-              window.location.reload();
-            }, 2000);
-          } else if (data.state === 5 && data.filesystemUpdateDone) { // SUCCESS - filesystem
+          if (data.state === 5) { // SUCCESS
             forcedUpdateInProgress = false;
             // Hide all content except reboot-required box
             document.getElementById('update-content').style.display = 'none';
@@ -239,6 +234,9 @@
             document.getElementById('update-status-section').style.display = 'block';
             document.querySelector('.card .header a.card-close').style.display = 'none';
             stopPolling();
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 3000);
           }
         })
         .catch(error => {

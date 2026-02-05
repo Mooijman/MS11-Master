@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>I2C Diagnostics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.png">
+  <link rel="stylesheet" type="text/css" href="style.css">
+  <style>
+    .device-list{margin:15px 0}.device-item{padding:10px 15px;margin:5px 0;background-color:transparent;border-radius:4px;cursor:pointer;transition:background-color .2s ease}.device-item:hover{background-color:#f8f9fa}.device-header{display:flex;justify-content:space-between;align-items:center}.device-name{color:#000;font-size:14px;font-weight:normal;flex:1;text-align:left}.device-address{color:#6c757d;font-family:monospace;font-size:14px;text-align:right;min-width:120px}.device-details{display:none;margin-top:15px;padding-top:15px;border-top:1px solid #e9ecef}.device-details.expanded{display:block}.register-dump{background-color:#f8f9fa;padding:10px;border-radius:4px;margin-top:10px;max-height:300px;overflow-y:auto}.register-line{font-family:monospace;font-size:12px;line-height:1.6;color:#495057}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.metric-item{background-color:#f8f9fa;padding:8px;border-radius:4px;font-size:13px}.metric-label{color:#6c757d;font-size:11px;text-transform:uppercase}.metric-value{color:#000;font-weight:bold;font-family:monospace}.status-row{display:flex;justify-content:space-between;align-items:center}.btn-rescan{padding:5px 15px;background-color:#000;color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px;transition:background-color .2s ease}.btn-rescan:hover{background-color:var(--color-secondary)}.loading-spinner{display:inline-block;width:12px;height:12px;border:2px solid #f3f3f3;border-top:2px solid var(--color-secondary);border-radius:50%;animation:spin 1s linear infinite;margin-left:5px}@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+  </style>
+</head>
+<body class="card-layout">
+  <div class="topnav">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
+  </div>
+  <div class="content">
+    <div class="card-grid">
+      <div class="card">
+        <div class="header">
+          <h1><img src="hex100.png" alt="" class="icon-inline">I2C Diagnostics</h1>
+          <a href="/settings" class="card-close">&times;</a>
+        </div>
+
+        <div class="padding-top-10">
+          <!-- Debug disabled message -->
+          <div id="debug-disabled" style="display: none;">
+            <p style="color: #d9534f; font-style: italic; text-align: center; margin: 20px 0;">
+              Diagnostics are only available when Debug options are enabled.
+            </p>
+          </div>
+
+          <!-- Debug enabled content -->
+          <div id="debug-enabled" style="display: none;">
+            <div id="device-list" class="device-list">
+              <p class="text-center text-muted">Scanning I2C bus...</p>
+            </div>
+
+            <hr class="hr-divider">
+
+            <div class="margin-bottom-20 status-row">
+              <p class="text-left text-muted line-height-16">
+                <strong>Status:</strong> <span id="status">Ready</span>
+              </p>
+              <button class="btn-rescan" onclick="scanI2C()">Rescan</button>
+            </div>
+
+            <div id="device-details-section"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+const debugEnabled='%DEBUG_ENABLED%'==='true';let currentDevices=[];debugEnabled?(document.getElementById('debug-enabled').style.display='block',scanI2C()):document.getElementById('debug-disabled').style.display='block';function scanI2C(){document.getElementById('status').innerHTML='Scanning<span class="loading-spinner"></span>',fetch('/api/i2c/scan').then(e=>e.json()).then(e=>{currentDevices=e.devices||[];const t=document.getElementById('device-list');if(0===e.count)t.innerHTML='<p class="text-center text-muted">No I2C devices found</p>';else{let n='<p class="text-left text-muted line-height-16"><strong>Found '+e.count+" device(s):</strong></p>";e.devices.forEach((e,t)=>{n+='<div class="device-item" onclick="toggleDeviceDetails('+t+')" id="device-'+t+'">',n+='<div class="device-header">',n+='<div class="device-name">'+e.name+"</div>",n+='<div class="device-address">'+e.address+" ("+e.decimal+")</div>",n+="</div>",n+="</div>"}),t.innerHTML=n}document.getElementById('status').textContent='Ready',document.getElementById('device-details-section').innerHTML=''}).catch(e=>{document.getElementById('device-list').innerHTML='<p class="text-center text-error">Scan failed</p>',document.getElementById('status').textContent='Error',console.error('I2C scan error:',e)})}function toggleDeviceDetails(e){const t=currentDevices[e],n=document.getElementById('device-details-section');if(n.dataset.currentDevice===e.toString())return n.innerHTML='',void(n.dataset.currentDevice='');n.dataset.currentDevice=e,n.innerHTML='<p class="text-center text-muted">Loading device details<span class="loading-spinner"></span></p>',fetch('/api/i2c/registers?address='+t.decimal).then(e=>e.json()).then(e=>{let i='<hr class="hr-divider">';if(i+="<h3 style=\"margin-bottom:15px\">Device Details: "+t.name+" ("+t.address+")</h3>",i+='<div class="metrics">',i+='<div class="metric-item"><div class="metric-label">Scan Duration</div><div class="metric-value">'+e.scanDuration+" ms</div></div>",i+='<div class="metric-item"><div class="metric-label">Response Time</div><div class="metric-value">'+e.responseTime+" ms</div></div>",i+='<div class="metric-item"><div class="metric-label">Bus Speed</div><div class="metric-value">'+e.busSpeed+" kHz</div></div>",i+='<div class="metric-item"><div class="metric-label">Errors</div><div class="metric-value">'+e.errors+"</div></div>",i+="</div>",i+='<h4 style="margin-top:20px;margin-bottom:10px">Register Dump (0x00-0xFF)</h4>',i+='<div class="register-dump">',e.registers&&e.registers.length>0){for(let t=0;t<e.registers.length;t+=16){let n='<div class="register-line">';n+="0x"+t.toString(16).padStart(2,"0").toUpperCase()+": ";for(let i=0;i<16&&t+i<e.registers.length;i++)n+=e.registers[t+i].toString(16).padStart(2,"0").toUpperCase()+" ";n+="</div>",i+=n}}else i+='<p class="text-muted">Unable to read registers</p>';i+="</div>",n.innerHTML=i}).catch(e=>{n.innerHTML='<p class="text-center text-error">Failed to load device details</p>',console.error('Device details error:',e)})}
+  </script>
+</body>
+</html>

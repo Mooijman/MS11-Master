@@ -452,7 +452,7 @@ bool downloadAndInstallFirmware(String url) {
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 15, "Update done");
   display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 40, "Powercycle now");
+  display.drawString(0, 40, "Rebooting...");
   display.display();
   
   // Update version in current.info (strip fw- prefix if present)
@@ -609,7 +609,7 @@ bool downloadAndInstallLittleFS(String url) {
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 15, "Update done");
   display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 40, "Powercycle now");
+  display.drawString(0, 40, "Rebooting...");
   display.display();
   
   // Update version in current.info (strip fw- prefix if present)
@@ -729,9 +729,13 @@ void setup() {
     display.display();
     delay(1000);
     
-    // Show IP address
+    // Show IP address + versions
     display.clear();
-    display.drawString(0, 16, "IP: " + WiFi.localIP().toString());
+    display.setFont(ArialMT_Plain_10);
+    display.drawString(0, 0, "IP: " + WiFi.localIP().toString());
+    // Line 2 intentionally left blank
+    display.drawString(0, 28, "fw-" + currentFirmwareVersion);
+    display.drawString(0, 42, "fs-" + currentFilesystemVersion);
     display.display();
     
     // Start timer to clear display after 3 seconds
@@ -1128,6 +1132,132 @@ void setup() {
       request->send(LittleFS, "/update.html", "text/html");
     });
     
+    // I2C diagnostics page
+    server.on("/i2c", HTTP_GET, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+      
+      request->send(LittleFS, "/i2c.html", "text/html", false, [debugEnabledBool](const String& var) -> String {
+        if (var == "DEBUG_ENABLED") {
+          return debugEnabledBool ? "true" : "false";
+        }
+        return String();
+      });
+    });
+    
+    // API: Scan I2C bus
+    server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+      
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+      
+      JsonDocument doc;
+      JsonArray devices = doc["devices"].to<JsonArray>();
+      
+      // Scan I2C bus (addresses 0x03 to 0x77)
+      for (uint8_t address = 0x03; address < 0x78; address++) {
+        Wire.beginTransmission(address);
+        uint8_t error = Wire.endTransmission();
+        
+        if (error == 0) {
+          // Device found
+          JsonObject device = devices.add<JsonObject>();
+          
+          char hexAddr[5];
+          sprintf(hexAddr, "0x%02X", address);
+          device["address"] = hexAddr;
+          device["decimal"] = address;
+          
+          // Add device name if known
+          String deviceName = "Unknown";
+          if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED";
+          else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280";
+          else if (address == 0x68) deviceName = "MPU6050/DS3231";
+          else if (address == 0x48) deviceName = "ADS1115";
+          else if (address == 0x20) deviceName = "PCF8574";
+          
+          device["name"] = deviceName;
+        }
+      }
+      
+      doc["count"] = devices.size();
+      
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+    
+    // API: Get device register dump
+    server.on("/api/i2c/registers", HTTP_GET, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+      
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+      
+      if (!request->hasParam("address")) {
+        request->send(400, "application/json", "{\"error\":\"Missing address parameter\"}");
+        return;
+      }
+      
+      uint8_t address = request->getParam("address")->value().toInt();
+      
+      JsonDocument doc;
+      JsonArray registers = doc["registers"].to<JsonArray>();
+      
+      unsigned long scanStart = millis();
+      int errorCount = 0;
+      unsigned long responseStart = 0;
+      unsigned long responseTime = 0;
+      
+      // Test device response
+      responseStart = micros();
+      Wire.beginTransmission(address);
+      uint8_t testError = Wire.endTransmission();
+      responseTime = (micros() - responseStart) / 1000;
+      
+      if (testError == 0) {
+        // Device responded, try to read registers
+        for (uint16_t reg = 0; reg < 256; reg++) {
+          Wire.beginTransmission(address);
+          Wire.write(reg);
+          uint8_t error = Wire.endTransmission(false); // Keep connection open
+          
+          if (error == 0) {
+            Wire.requestFrom(address, (uint8_t)1);
+            if (Wire.available()) {
+              registers.add(Wire.read());
+            } else {
+              registers.add(0xFF); // No data available
+              errorCount++;
+            }
+          } else {
+            registers.add(0xFF); // Error reading
+            errorCount++;
+          }
+          
+          yield(); // Prevent watchdog timeout
+        }
+      } else {
+        errorCount = 256;
+      }
+      
+      unsigned long scanDuration = millis() - scanStart;
+      
+      // Metrics
+      doc["scanDuration"] = scanDuration;
+      doc["responseTime"] = responseTime;
+      doc["busSpeed"] = 100; // Default I2C speed (can be read from Wire if needed)
+      doc["errors"] = errorCount;
+      
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+    
     // API: Get update status
     server.on("/api/update/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       // Reload current versions (sync with compile-time versions)
@@ -1186,7 +1316,6 @@ void setup() {
       
       bool success = false;
       String message = "";
-      bool isFilesystemUpdate = false;
       
       if (type == "firmware" && updateInfo.firmwareAvailable) {
         success = downloadAndInstallFirmware(updateInfo.firmwareUrl);
@@ -1194,7 +1323,6 @@ void setup() {
       } else if (type == "littlefs" && updateInfo.littlefsAvailable) {
         success = downloadAndInstallLittleFS(updateInfo.littlefsUrl);
         message = success ? "LittleFS installed" : "LittleFS install failed";
-        isFilesystemUpdate = true;
       } else if (type == "both") {
         if (updateInfo.firmwareAvailable) {
           success = downloadAndInstallFirmware(updateInfo.firmwareUrl);
@@ -1209,32 +1337,25 @@ void setup() {
           } else {
             message = "Both installed";
           }
-          isFilesystemUpdate = true;
         } else if (success) {
           message = "Firmware installed";
         }
       }
-      
-      // Set filesystem update flag
-      if (success && isFilesystemUpdate) {
-        updateInfo.filesystemUpdateDone = true;
-      }
+      updateInfo.filesystemUpdateDone = false;
       
       DynamicJsonDocument doc(256);
       doc["success"] = success;
       doc["message"] = message;
-      doc["rebootRequired"] = success && !isFilesystemUpdate;  // Only auto-reboot for firmware updates
+      doc["rebootRequired"] = success;  // Auto-reboot for firmware and filesystem updates
       
       String response;
       serializeJson(doc, response);
       request->send(200, "application/json", response);
       
-      // Only restart if firmware was updated (not filesystem)
-      if (success && !isFilesystemUpdate) {
+      if (success) {
         delay(2000);
         ESP.restart();
       }
-      // If filesystem was updated, system halts here - user must power cycle
     });
     
     // API: Reinstall current version (debug only)
@@ -1260,7 +1381,6 @@ void setup() {
       
       bool success = false;
       String message = "";
-      bool isFilesystemUpdate = false;
       
       if (type == "firmware" && !fwUrl.isEmpty()) {
         success = downloadAndInstallFirmware(fwUrl);
@@ -1268,7 +1388,6 @@ void setup() {
       } else if (type == "littlefs" && !fsUrl.isEmpty()) {
         success = downloadAndInstallLittleFS(fsUrl);
         message = success ? "LittleFS reinstalled" : "LittleFS reinstall failed";
-        isFilesystemUpdate = true;
       } else if (type == "both") {
         if (!fwUrl.isEmpty()) {
           success = downloadAndInstallFirmware(fwUrl);
@@ -1283,30 +1402,24 @@ void setup() {
           } else {
             message = "Both reinstalled";
           }
-          isFilesystemUpdate = true;
         } else if (success) {
           message = "Firmware reinstalled";
         }
       } else {
         message = "No update URLs available. Check for updates first.";
       }
-      
-      // Set filesystem update flag
-      if (success && isFilesystemUpdate) {
-        updateInfo.filesystemUpdateDone = true;
-      }
+      updateInfo.filesystemUpdateDone = false;
       
       DynamicJsonDocument doc(256);
       doc["success"] = success;
       doc["message"] = message;
-      doc["rebootRequired"] = success && !isFilesystemUpdate;
+      doc["rebootRequired"] = success;
       
       String response;
       serializeJson(doc, response);
       request->send(200, "application/json", response);
       
-      // Only restart if firmware was updated (not filesystem)
-      if (success && !isFilesystemUpdate) {
+      if (success) {
         delay(2000);
         ESP.restart();
       }
