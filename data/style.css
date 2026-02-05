@@ -982,12 +982,30 @@ a#gpioViewerBtn:hover {
   border-radius: var(--border-radius-sm);
 }
 
+.update-warning-box {
+  margin-top: var(--spacing-3xl);
+  padding: var(--spacing-2xl);
+  background-color: #ffebee;
+  border: 1px solid #ef5350;
+  border-radius: var(--border-radius-sm);
+}
+
 .reboot-warning-text {
   margin: 0;
   color: var(--color-text-warning);
 }
 
+.update-warning-text {
+  margin: 0;
+  color: #c62828;
+}
+
 .reboot-warning-text-spacing {
   margin: var(--spacing-lg) 0 0 0;
   color: var(--color-text-warning);
+}
+
+.update-warning-text-spacing {
+  margin: var(--spacing-lg) 0 0 0;
+  color: #c62828;
 }
