@@ -17,35 +17,10 @@
 #include "images.h"
 #include "config.h"
 #include "settings.h"
-
-// Update state enum
-enum UpdateState {
-  UPDATE_IDLE,
-  UPDATE_CHECKING,
-  UPDATE_AVAILABLE,
-  UPDATE_DOWNLOADING,
-  UPDATE_INSTALLING,
-  UPDATE_SUCCESS,
-  UPDATE_ERROR
-};
-
-// Update info structure
-struct UpdateInfo {
-  UpdateState state;
-  String remoteVersion;
-  String remoteLittlefsVersion;
-  String firmwareUrl;
-  String littlefsUrl;
-  bool firmwareAvailable;
-  bool littlefsAvailable;
-  unsigned long lastCheck;
-  String lastError;
-  int downloadProgress;
-  bool filesystemUpdateDone;  // Flag to indicate filesystem update completed (requires manual reboot)
-};
+#include "github_updater.h"
+#include "wifi_manager.h"
 
 // Global instances
-UpdateInfo updateInfo;
 Preferences preferences;
 
 // Background update check timing
@@ -58,6 +33,12 @@ GPIOViewer* gpio_viewer = nullptr;
 
 // OLED display instance (using config.h constants)
 SSD1306 display(OLED_I2C_ADDRESS, OLED_SDA_PIN, OLED_SCL_PIN);
+
+// GitHub updater instance
+GitHubUpdater* githubUpdater = nullptr;
+
+// WiFi manager instance
+WiFiManager* wifiManager = nullptr;
 
 // Create AsyncWebServer object
 AsyncWebServer server(WEB_SERVER_PORT);
@@ -90,14 +71,6 @@ String& storedFilesystemVersion = settings.filesystemVersion;
 // Aliases for version tracking (used in some functions)
 String& currentFirmwareVersion = settings.firmwareVersion;
 String& currentFilesystemVersion = settings.filesystemVersion;
-
-IPAddress localIP;
-IPAddress localGateway;
-IPAddress localSubnet;
-
-// Timer variables
-unsigned long previousMillis = 0;
-const long interval = WIFI_CONNECT_TIMEOUT;  // WiFi connection timeout
 
 // Track if we're in AP mode
 bool isAPMode = false;
@@ -144,539 +117,6 @@ String jsonEscape(String str) {
   return result;
 }
 
-// Compare versions (format: 2026-1.0.01)
-// Returns true if remote is newer than current
-bool compareVersions(String remoteVer, String currentVer) {
-  if (remoteVer.length() == 0 || currentVer.length() == 0) return false;
-  
-  // Strip prefixes for comparison: fw-, fs-
-  String remote = remoteVer;
-  String current = currentVer;
-  
-  // Remove version prefixes (fw- and fs- only, no v prefix expected)
-  if (remote.startsWith("fw-")) remote = remote.substring(3);    // fw-2026-1.0.07 → 2026-1.0.07
-  if (remote.startsWith("fs-")) remote = remote.substring(3);    // fs-2026-1.0.07 → 2026-1.0.07
-  
-  if (current.startsWith("fw-")) current = current.substring(3);
-  if (current.startsWith("fs-")) current = current.substring(3);
-  
-  // Format: 2026-1.0.01 (NO v prefix)
-  // Simply compare strings (lexicographic comparison works for this format)
-  return remote > current;
-}
-
-// Save update info to NVS
-void saveUpdateInfo() {
-  preferences.begin(NVS_NAMESPACE_OTA, false);
-  preferences.putString("remoteVer", updateInfo.remoteVersion);
-  preferences.putString("remoteLFS", updateInfo.remoteLittlefsVersion);
-  preferences.putString("fwUrl", updateInfo.firmwareUrl);
-  preferences.putString("fsUrl", updateInfo.littlefsUrl);
-  preferences.putULong("lastCheck", updateInfo.lastCheck);
-  preferences.putString("lastError", updateInfo.lastError);
-  preferences.putBool("fwAvail", updateInfo.firmwareAvailable);
-  preferences.putBool("lfsAvail", updateInfo.littlefsAvailable);
-  preferences.end();
-}
-
-// Load update info from NVS
-void loadUpdateInfo() {
-  preferences.begin(NVS_NAMESPACE_OTA, true);
-  updateInfo.remoteVersion = preferences.getString("remoteVer", "");
-  updateInfo.remoteLittlefsVersion = preferences.getString("remoteLFS", "");
-  updateInfo.firmwareUrl = preferences.getString("fwUrl", "");
-  updateInfo.littlefsUrl = preferences.getString("fsUrl", "");
-  updateInfo.lastCheck = preferences.getULong("lastCheck", 0);
-  updateInfo.lastError = preferences.getString("lastError", "");
-  updateInfo.firmwareAvailable = preferences.getBool("fwAvail", false);
-  updateInfo.littlefsAvailable = preferences.getBool("lfsAvail", false);
-  preferences.end();
-  updateInfo.state = UPDATE_IDLE;
-  updateInfo.downloadProgress = 0;
-}
-
-// Check for updates via GitHub API
-bool checkGitHubRelease() {
-  if (!updateUrl || updateUrl.length() == 0) {
-    Serial.println("No update URL configured");
-    return false;
-  }
-  
-  updateInfo.state = UPDATE_CHECKING;
-  updateInfo.lastError = "";
-  
-  HTTPClient http;
-  WiFiClientSecure client;
-  
-  // For GitHub, we use setInsecure (production should use certificate)
-  client.setInsecure();
-  
-  // GitHub API URL format: https://api.github.com/repos/OWNER/REPO/releases/latest
-  String apiUrl = updateUrl;
-  if (!apiUrl.startsWith("http")) {
-    Serial.println("Invalid update URL");
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "Invalid URL format";
-    return false;
-  }
-  
-  Serial.println("Checking for updates at: " + apiUrl);
-  
-  http.begin(client, apiUrl);
-  http.addHeader("User-Agent", "ESP32-OTA-Client");
-  
-  // Add GitHub token for private repository access
-  if (githubToken && githubToken.length() > 0) {
-    http.addHeader("Authorization", "token " + githubToken);
-    Serial.println("Using GitHub token for authentication");
-  }
-  
-  http.setTimeout(15000); // 15 second timeout
-  
-  int httpCode = http.GET();
-  
-  if (httpCode == 200) {
-    String payload = http.getString();
-    
-    // Parse JSON response
-    DynamicJsonDocument doc(4096);
-    DeserializationError error = deserializeJson(doc, payload);
-    
-    if (error) {
-      Serial.println("JSON parsing failed: " + String(error.c_str()));
-      updateInfo.state = UPDATE_ERROR;
-      updateInfo.lastError = "JSON parse error";
-      http.end();
-      return false;
-    }
-    
-    // Extract version and URLs
-    String remoteVersion = doc["tag_name"].as<String>();
-    JsonArray assets = doc["assets"];
-    
-    updateInfo.remoteVersion = remoteVersion;
-    updateInfo.firmwareUrl = "";
-    updateInfo.littlefsUrl = "";
-    
-    // Look for firmware and filesystem assets
-    // For private repos, use the API asset URL
-    // Asset names: fw-VERSION.bin and fs-VERSION.bin
-    for (JsonObject asset : assets) {
-      String name = asset["name"].as<String>();
-      String downloadUrl = asset["url"].as<String>();  // This is the API URL
-      
-      if (name.startsWith("fw-") && name.endsWith(".bin")) {
-        updateInfo.firmwareUrl = downloadUrl;
-        Serial.println("Found firmware: " + downloadUrl);
-      } else if (name.startsWith("fs-") && name.endsWith(".bin")) {
-        updateInfo.littlefsUrl = downloadUrl;
-        Serial.println("Found filesystem: " + downloadUrl);
-      }
-    }
-    
-    // Compare versions - check if updates are available based on files present
-    // If fw.bin is present and version is newer, firmware update available
-    // If fs.bin is present and version is newer, filesystem update available
-    updateInfo.firmwareAvailable = !updateInfo.firmwareUrl.isEmpty() && 
-                                    compareVersions(remoteVersion, currentFirmwareVersion);
-    updateInfo.littlefsAvailable = !updateInfo.littlefsUrl.isEmpty() && 
-                                    compareVersions(remoteVersion, currentFilesystemVersion);
-    
-    if (updateInfo.firmwareAvailable || updateInfo.littlefsAvailable) {
-      updateInfo.state = UPDATE_AVAILABLE;
-      Serial.println("Update available: " + remoteVersion);
-      Serial.println("Current firmware: " + currentFirmwareVersion);
-      Serial.println("Current filesystem: " + currentFilesystemVersion);
-      if (updateInfo.firmwareAvailable) {
-        Serial.println("→ Firmware update available");
-      }
-      if (updateInfo.littlefsAvailable) {
-        Serial.println("→ Filesystem update available");
-      }
-    } else {
-      updateInfo.state = UPDATE_IDLE;
-      Serial.println("No update needed. Remote: " + remoteVersion + ", Current: " + currentFirmwareVersion);
-    }
-    
-    updateInfo.lastCheck = millis();
-    saveUpdateInfo();
-    
-    http.end();
-    return true;
-    
-  } else {
-    Serial.println("HTTP request failed: " + String(httpCode));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "HTTP " + String(httpCode);
-    http.end();
-    return false;
-  }
-}
-
-// Download and install firmware
-bool downloadAndInstallFirmware(String url) {
-  if (url.length() == 0) {
-    Serial.println("No firmware URL available");
-    return false;
-  }
-  
-  // Display update message on OLED - FW specific
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Updating FW");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 30, "Please Wait...");
-  display.drawString(0, 45, "DO NOT POWER OFF");
-  display.display();
-  
-  updateInfo.state = UPDATE_DOWNLOADING;
-  updateInfo.downloadProgress = 0;
-  
-  HTTPClient http;
-  WiFiClientSecure client;
-  
-  client.setInsecure();
-  
-  Serial.println("Downloading firmware from: " + url);
-  Serial.println("Token available: " + String(githubToken.length() > 0 ? "YES" : "NO"));
-  
-  http.begin(client, url);
-  http.setTimeout(60000); // 60 second timeout for download
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);  // Follow redirects
-  
-  // Add authorization and accept headers for GitHub API
-  if (githubToken.length() > 0) {
-    http.addHeader("Authorization", "token " + githubToken);
-  }
-  http.addHeader("Accept", "application/octet-stream");
-  
-  int httpCode = http.GET();
-  Serial.println("HTTP response code: " + String(httpCode));
-  
-  if (httpCode != 200 && httpCode != 302) {
-    Serial.println("Download failed: " + String(httpCode));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "Download failed HTTP " + String(httpCode);
-    http.end();
-    return false;
-  }
-  
-  int contentLength = http.getSize();
-  if (contentLength <= 0) {
-    Serial.println("Invalid content length");
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "Invalid content length";
-    http.end();
-    return false;
-  }
-  
-  Serial.printf("Firmware size: %d bytes\n", contentLength);
-  
-  updateInfo.state = UPDATE_INSTALLING;
-  
-  // Start OTA update
-  if (!Update.begin(contentLength, U_FLASH)) {
-    Serial.println("Update.begin failed: " + String(Update.errorString()));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = Update.errorString();
-    http.end();
-    return false;
-  }
-  
-  // Get stream and write
-  WiFiClient * stream = http.getStreamPtr();
-  size_t written = 0;
-  uint8_t buff[1024];
-  
-  while (http.connected() && (written < contentLength)) {
-    size_t available = stream->available();
-    
-    if (available) {
-      int c = stream->readBytes(buff, min(available, (size_t)sizeof(buff)));
-      
-      if (c > 0) {
-        if (Update.write(buff, c) != c) {
-          Serial.println("Write failed");
-          Update.abort();
-          updateInfo.state = UPDATE_ERROR;
-          updateInfo.lastError = "Write failed";
-          http.end();
-          return false;
-        }
-        written += c;
-        updateInfo.downloadProgress = (written * 100) / contentLength;
-        
-        // Reset watchdog timers
-        esp_task_wdt_reset();
-        yield();
-        
-        if (written % 10240 == 0) { // Log every 10KB
-          Serial.printf("Progress: %d%%\n", updateInfo.downloadProgress);
-        }
-      }
-    }
-    esp_task_wdt_reset();
-    delay(1);
-  }
-  
-  http.end();
-  
-  if (written != contentLength) {
-    Serial.println("Written bytes mismatch");
-    Update.abort();
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "Size mismatch";
-    return false;
-  }
-  
-  if (!Update.end()) {
-    Serial.println("Update.end failed: " + String(Update.errorString()));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = Update.errorString();
-    return false;
-  }
-  
-  if (!Update.isFinished()) {
-    Serial.println("Update not finished");
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "Update incomplete";
-    return false;
-  }
-  
-  Serial.println("Firmware update successful!");
-  updateInfo.state = UPDATE_SUCCESS;
-  updateInfo.downloadProgress = 100;
-  
-  // Display success message on OLED
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 15, "Update done");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 40, "Rebooting...");
-  display.display();
-  
-  // Update version in current.info (strip fw- prefix if present)
-  String newVersion = updateInfo.remoteVersion;
-  if (newVersion.startsWith("fw-")) {
-    newVersion = newVersion.substring(3);
-  }
-  currentFirmwareVersion = newVersion;
-  settings.updateVersions();
-  
-  return true;
-}
-
-// Download and install LittleFS
-bool downloadAndInstallLittleFS(String url) {
-  if (url.length() == 0) {
-    Serial.println("No LittleFS URL available");
-    return false;
-  }
-  
-  // Display update message on OLED - FS specific
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Updating FS");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 30, "Please Wait...");
-  display.drawString(0, 45, "DO NOT POWER OFF");
-  display.display();
-  
-  updateInfo.state = UPDATE_DOWNLOADING;
-  updateInfo.downloadProgress = 0;
-  
-  HTTPClient http;
-  WiFiClientSecure client;
-  
-  client.setInsecure();
-  
-  Serial.println("=== DOWNLOAD DEBUG ===");
-  Serial.println("LittleFS URL: " + url);
-  Serial.println("Token (first 10 chars): " + (githubToken.length() > 0 ? githubToken.substring(0, min(10, (int)githubToken.length())) : "EMPTY"));
-  Serial.println("=====================");
-  
-  http.begin(client, url);
-  http.setTimeout(60000);
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);  // Follow redirects
-  
-  // Add authorization and accept headers for GitHub API
-  if (githubToken.length() > 0) {
-    http.addHeader("Authorization", "token " + githubToken);
-    Serial.println("Added Authorization header");
-  }
-  http.addHeader("Accept", "application/octet-stream");
-  Serial.println("Added Accept header");
-  
-  int httpCode = http.GET();
-  Serial.println("HTTP response code: " + String(httpCode));
-  
-  if (httpCode != 200 && httpCode != 302) {
-    Serial.println("Download failed: " + String(httpCode));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "LFS download failed HTTP " + String(httpCode);
-    http.end();
-    return false;
-  }
-  
-  int contentLength = http.getSize();
-  if (contentLength <= 0) {
-    Serial.println("Invalid content length");
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "Invalid LFS content length";
-    http.end();
-    return false;
-  }
-  
-  Serial.printf("LittleFS size: %d bytes\n", contentLength);
-  
-  updateInfo.state = UPDATE_INSTALLING;
-  
-  // Start LittleFS update (use U_SPIFFS type for filesystem partition)
-  if (!Update.begin(contentLength, U_SPIFFS)) {
-    Serial.println("LittleFS Update.begin failed: " + String(Update.errorString()));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "LFS " + String(Update.errorString());
-    http.end();
-    return false;
-  }
-  
-  // Get stream and write
-  WiFiClient * stream = http.getStreamPtr();
-  size_t written = 0;
-  uint8_t buff[1024];
-  
-  while (http.connected() && (written < contentLength)) {
-    size_t available = stream->available();
-    
-    if (available) {
-      int c = stream->readBytes(buff, min(available, (size_t)sizeof(buff)));
-      
-      if (c > 0) {
-        if (Update.write(buff, c) != c) {
-          Serial.println("LittleFS Write failed");
-          Update.abort();
-          updateInfo.state = UPDATE_ERROR;
-          updateInfo.lastError = "LFS write failed";
-          http.end();
-          return false;
-        }
-        written += c;
-        updateInfo.downloadProgress = (written * 100) / contentLength;
-        
-        // Reset watchdog timers
-        esp_task_wdt_reset();
-        yield();
-        
-        if (written % 10240 == 0) {
-          Serial.printf("LittleFS Progress: %d%%\n", updateInfo.downloadProgress);
-        }
-      }
-    }
-    esp_task_wdt_reset();
-    delay(1);
-  }
-  
-  http.end();
-  
-  if (written != contentLength) {
-    Serial.println("LittleFS Written bytes mismatch");
-    Update.abort();
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "LFS size mismatch";
-    return false;
-  }
-  
-  if (!Update.end()) {
-    Serial.println("LittleFS Update.end failed: " + String(Update.errorString()));
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "LFS " + String(Update.errorString());
-    return false;
-  }
-  
-  if (!Update.isFinished()) {
-    Serial.println("LittleFS Update not finished");
-    updateInfo.state = UPDATE_ERROR;
-    updateInfo.lastError = "LFS update incomplete";
-    return false;
-  }
-  
-  Serial.println("LittleFS update successful!");
-  updateInfo.state = UPDATE_SUCCESS;
-  updateInfo.downloadProgress = 100;
-  
-  // Display success message on OLED
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 15, "Update done");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 40, "Rebooting...");
-  display.display();
-  
-  // Update version in current.info (strip fw- prefix if present)
-  String newVersion = updateInfo.remoteVersion;
-  if (newVersion.startsWith("fw-")) {
-    newVersion = newVersion.substring(3);
-  }
-  currentFilesystemVersion = newVersion;
-  settings.updateVersions();
-  
-  return true;
-}
-
-// Initialize WiFi
-bool initWiFi() {
-  if(ssid==""){
-    Serial.println("Undefined SSID.");
-    return false;
-  }
-
-  WiFi.mode(WIFI_STA);
-  
-  // Check if DHCP or static IP
-  bool isDHCP = (useDHCP == "true" || useDHCP == "on");
-  
-  if (!isDHCP) {
-    // Static IP configuration
-    if(ip==""){
-      Serial.println("Static IP selected but no IP address defined.");
-      return false;
-    }
-    localIP.fromString(ip.c_str());
-    localGateway.fromString(gateway.c_str());
-    localSubnet.fromString(netmask.c_str());
-
-    if (!WiFi.config(localIP, localGateway, localSubnet)){
-      Serial.println("STA Failed to configure");
-      return false;
-    }
-    Serial.println("Using Static IP");
-  } else {
-    Serial.println("Using DHCP");
-  }
-  
-  WiFi.begin(ssid.c_str(), pass.c_str());
-  Serial.println("Connecting to WiFi...");
-
-  unsigned long currentMillis = millis();
-  previousMillis = currentMillis;
-
-  while(WiFi.status() != WL_CONNECTED) {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-      Serial.println("Failed to connect.");
-      // Clear saved credentials so AP mode starts on next reboot
-      preferences.begin("config", false);
-      preferences.remove("ssid");
-      preferences.remove("pass");
-      preferences.end();
-      return false;
-    }
-    delay(10); // Prevent busy-wait, allow other tasks to run
-  }
-
-  Serial.println(WiFi.localIP());
-  return true;
-}
 
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
@@ -707,8 +147,9 @@ void setup() {
   // Print loaded settings
   settings.print();
   
-  // Initialize OTA update system
-  loadUpdateInfo();
+  // Initialize GitHub updater
+  githubUpdater = new GitHubUpdater(preferences, display);
+  githubUpdater->loadUpdateInfo();
   
   Serial.println("OTA Update System Initialized");
   Serial.println("Firmware Version: " + currentFirmwareVersion);
@@ -719,7 +160,11 @@ void setup() {
     Serial.println("Gateway: " + gateway);
   }
 
-  if(initWiFi()) {
+  // Initialize WiFi manager
+  wifiManager = new WiFiManager(preferences);
+  bool isDHCP = (useDHCP == "true" || useDHCP == "on");
+  
+  if(wifiManager->begin(ssid, pass, ip, gateway, netmask, isDHCP, WIFI_CONNECT_TIMEOUT)) {
     // WiFi connected successfully
     Serial.println("WiFi connected!");
     
@@ -1263,6 +708,8 @@ void setup() {
       // Reload current versions (sync with compile-time versions)
       settings.syncVersions();
       
+      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
+      
       JsonDocument doc;
       
       doc["currentFirmwareVersion"] = currentFirmwareVersion;
@@ -1274,7 +721,7 @@ void setup() {
       doc["state"] = updateInfo.state;
       doc["firmwareAvailable"] = updateInfo.firmwareAvailable;
       doc["littlefsAvailable"] = updateInfo.littlefsAvailable;
-      doc["availableFirmwareVersion"] = updateInfo.remoteVersion;  // Same as remoteVersion for both
+      doc["availableFirmwareVersion"] = updateInfo.remoteVersion;
       doc["availableFilesystemVersion"] = updateInfo.remoteVersion;
       doc["lastCheck"] = updateInfo.lastCheck;
       doc["lastError"] = updateInfo.lastError;
@@ -1289,7 +736,10 @@ void setup() {
     // API: Check for updates
     server.on("/api/update/check", HTTP_POST, [](AsyncWebServerRequest *request) {
       Serial.println("=== UPDATE CHECK REQUESTED ===");
-      bool success = checkGitHubRelease();
+      bool success = githubUpdater->checkGitHubRelease(updateUrl, githubToken, 
+                                                       currentFirmwareVersion, currentFilesystemVersion);
+      
+      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
       
       DynamicJsonDocument doc(256);
       doc["success"] = success;
@@ -1310,6 +760,8 @@ void setup() {
         type = request->getParam("type", true)->value();
       }
       
+      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
+      
       Serial.println("Install type: " + type);
       Serial.println("Firmware available: " + String(updateInfo.firmwareAvailable));
       Serial.println("LittleFS available: " + String(updateInfo.littlefsAvailable));
@@ -1318,20 +770,20 @@ void setup() {
       String message = "";
       
       if (type == "firmware" && updateInfo.firmwareAvailable) {
-        success = downloadAndInstallFirmware(updateInfo.firmwareUrl);
+        success = githubUpdater->downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFirmwareVersion);
         message = success ? "Firmware installed" : "Firmware install failed";
       } else if (type == "littlefs" && updateInfo.littlefsAvailable) {
-        success = downloadAndInstallLittleFS(updateInfo.littlefsUrl);
+        success = githubUpdater->downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFilesystemVersion);
         message = success ? "LittleFS installed" : "LittleFS install failed";
       } else if (type == "both") {
         if (updateInfo.firmwareAvailable) {
-          success = downloadAndInstallFirmware(updateInfo.firmwareUrl);
+          success = githubUpdater->downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFirmwareVersion);
           if (!success) {
             message = "Firmware install failed";
           }
         }
         if (success && updateInfo.littlefsAvailable) {
-          success = downloadAndInstallLittleFS(updateInfo.littlefsUrl);
+          success = githubUpdater->downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFilesystemVersion);
           if (!success) {
             message = "LittleFS install failed";
           } else {
@@ -1346,7 +798,7 @@ void setup() {
       DynamicJsonDocument doc(256);
       doc["success"] = success;
       doc["message"] = message;
-      doc["rebootRequired"] = success;  // Auto-reboot for firmware and filesystem updates
+      doc["rebootRequired"] = success;
       
       String response;
       serializeJson(doc, response);
@@ -1362,7 +814,6 @@ void setup() {
     server.on("/api/update/reinstall", HTTP_POST, [](AsyncWebServerRequest *request) {
       Serial.println("=== REINSTALL REQUESTED ===");
       
-      // Only allow if debug is enabled
       if (debugEnabled != "on" && debugEnabled != "true") {
         request->send(403, "application/json", "{\"success\":false,\"message\":\"Debug mode required\"}");
         return;
@@ -1375,7 +826,7 @@ void setup() {
       
       Serial.println("Reinstall type: " + type);
       
-      // Use the current GitHub URLs if we have them, otherwise construct from stored version
+      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
       String fwUrl = updateInfo.firmwareUrl;
       String fsUrl = updateInfo.littlefsUrl;
       
@@ -1383,20 +834,20 @@ void setup() {
       String message = "";
       
       if (type == "firmware" && !fwUrl.isEmpty()) {
-        success = downloadAndInstallFirmware(fwUrl);
+        success = githubUpdater->downloadAndInstallFirmware(fwUrl, githubToken, currentFirmwareVersion);
         message = success ? "Firmware reinstalled" : "Firmware reinstall failed";
       } else if (type == "littlefs" && !fsUrl.isEmpty()) {
-        success = downloadAndInstallLittleFS(fsUrl);
+        success = githubUpdater->downloadAndInstallLittleFS(fsUrl, githubToken, currentFilesystemVersion);
         message = success ? "LittleFS reinstalled" : "LittleFS reinstall failed";
       } else if (type == "both") {
         if (!fwUrl.isEmpty()) {
-          success = downloadAndInstallFirmware(fwUrl);
+          success = githubUpdater->downloadAndInstallFirmware(fwUrl, githubToken, currentFirmwareVersion);
           if (!success) {
             message = "Firmware reinstall failed";
           }
         }
         if (success && !fsUrl.isEmpty()) {
-          success = downloadAndInstallLittleFS(fsUrl);
+          success = githubUpdater->downloadAndInstallLittleFS(fsUrl, githubToken, currentFilesystemVersion);
           if (!success) {
             message = "LittleFS reinstall failed";
           } else {
