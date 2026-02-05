@@ -2,6 +2,25 @@
 
 Dit document beschrijft belangrijke technische beslissingen en de redenering erachter.
 
+## Release Binary Naming Convention
+
+### Standard
+Bij het maken van een nieuwe release moeten de binary files de volgende naming convention volgen:
+- **Firmware**: `fw-YYYY-M.0.NN.bin` (bijvoorbeeld: `fw-2026-1.0.07.bin`)
+- **Filesystem**: `fs-YYYY-M.0.NN.bin` (bijvoorbeeld: `fs-2026-1.0.07.bin`)
+
+### Procedure
+```bash
+# Na compilatie, kopieer binaries naar release folder met correcte namen:
+mkdir -p release/YYYY-M.0.NN
+cp .pio/build/esp32dev/firmware.bin release/YYYY-M.0.NN/fw-YYYY-M.0.NN.bin
+cp .pio/build/esp32dev/littlefs.bin release/YYYY-M.0.NN/fs-YYYY-M.0.NN.bin
+```
+
+**Reden**: Consistentie met bestaande releases en compatibility met update systeem dat `fw-` en `fs-` prefixes verwacht.
+
+---
+
 ## Automatische Versie Synchronisatie
 
 ### Probleem

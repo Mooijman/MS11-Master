@@ -64,6 +64,11 @@
                 <p><strong>Fout:</strong> <span id="error-message"></span></p>
               </div>
               
+              <div id="update-warning" class="reboot-warning-box hidden">
+                <p class="reboot-warning-text"><strong>⚠️ UPDATING DEVICE</strong></p>
+                <p class="reboot-warning-text-spacing">DO NOT DISCONNECT POWER!</p>
+              </div>
+              
               <div id="progress-ota" class="hidden">
                 <div class="progress-bar-bg">
                   <div id="progress-bar-ota" class="progress-bar progress-bar-width-0"></div>
@@ -155,7 +160,12 @@
               document.getElementById('reinstall-section').style.display = 'none';
             }
           } else {
-            document.getElementById('update-availability').textContent = '-';
+            // Check if GitHub token is missing when updates are enabled
+            if (data.updatesEnabled && !data.hasGithubToken) {
+              document.getElementById('update-availability').innerHTML = '<span style="color: #d9534f; font-style: italic;">Missing GitHub Token. Check settings.</span>';
+            } else {
+              document.getElementById('update-availability').textContent = '-';
+            }
             document.getElementById('update-actions').style.display = 'none';
             document.getElementById('update-status-section').style.display = 'none';
             // Hide Update button
@@ -174,6 +184,7 @@
           
           // Show progress during download/install
           if (data.state === 3 || data.state === 4) { // DOWNLOADING or INSTALLING
+            document.getElementById('update-warning').style.display = 'block';
             document.getElementById('progress-ota').style.display = 'block';
             document.getElementById('progress-bar-ota').style.width = data.downloadProgress + '%';
             const stateText = data.state === 3 ? 'Downloading' : 'Installing';
@@ -182,6 +193,7 @@
             document.getElementById('reboot-required').style.display = 'none';
             startPolling();
           } else {
+            document.getElementById('update-warning').style.display = 'none';
             document.getElementById('progress-ota').style.display = 'none';
             if (data.state !== 2 && data.state !== 1) { // Not AVAILABLE or CHECKING
               stopPolling();

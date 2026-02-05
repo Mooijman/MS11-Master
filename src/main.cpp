@@ -309,6 +309,15 @@ bool downloadAndInstallFirmware(String url) {
     return false;
   }
   
+  // Display update message on OLED
+  display.clear();
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 0, "Updating");
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 30, "Please Wait...");
+  display.drawString(0, 45, "DO NOT POWER OFF");
+  display.display();
+  
   updateInfo.state = UPDATE_DOWNLOADING;
   updateInfo.downloadProgress = 0;
   
@@ -444,6 +453,15 @@ bool downloadAndInstallLittleFS(String url) {
     Serial.println("No LittleFS URL available");
     return false;
   }
+  
+  // Display update message on OLED
+  display.clear();
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 0, "Updating");
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 30, "Please Wait...");
+  display.drawString(0, 45, "DO NOT POWER OFF");
+  display.display();
   
   updateInfo.state = UPDATE_DOWNLOADING;
   updateInfo.downloadProgress = 0;
@@ -1094,6 +1112,7 @@ void setup() {
       doc["currentFilesystemVersion"] = currentFilesystemVersion;
       doc["updatesEnabled"] = (updatesEnabled == "on" || updatesEnabled == "true");
       doc["debugEnabled"] = (debugEnabled == "on" || debugEnabled == "true");
+      doc["hasGithubToken"] = (githubToken.length() > 0);
       doc["remoteVersion"] = updateInfo.remoteVersion;
       doc["state"] = updateInfo.state;
       doc["firmwareAvailable"] = updateInfo.firmwareAvailable;
