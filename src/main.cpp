@@ -11,15 +11,12 @@
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <esp_ota_ops.h>
+#include <esp_task_wdt.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include "images.h"
-
-// Firmware version tracking (format: type-year-major.minor.patch)
-#define FIRMWARE_VERSION "fw-2026-1.0.00"
-#define FILESYSTEM_VERSION "fs-2026-1.0.00"
-#define BUILD_DATE __DATE__
-#define BUILD_TIME __TIME__
+#include "config.h"
+#include "settings.h"
 
 // Update state enum
 enum UpdateState {
@@ -53,56 +50,46 @@ Preferences preferences;
 
 // Background update check timing
 unsigned long lastBackgroundCheck = 0;
-const unsigned long CHECK_INTERVAL = 6UL * 60UL * 60UL * 1000UL; // 6 hours
-const int MAX_CHECKS_PER_DAY = 4;
 int checksToday = 0;
 unsigned long dayStartTime = 0;
 
 // GPIO Viewer pointer (only instantiated if enabled)
 GPIOViewer* gpio_viewer = nullptr;
 
-// OLED display instance (address 0x3c, SDA pin 5, SCL pin 4)
-SSD1306 display(0x3c, 5, 4);
+// OLED display instance (using config.h constants)
+SSD1306 display(OLED_I2C_ADDRESS, OLED_SDA_PIN, OLED_SCL_PIN);
 
-// Create AsyncWebServer object on port 80
-AsyncWebServer server(80);
+// Create AsyncWebServer object
+AsyncWebServer server(WEB_SERVER_PORT);
 
 // DNS server for captive portal
 DNSServer dnsServer;
-const byte DNS_PORT = 53;
-
-// Search for parameter in HTTP POST request
-const char* PARAM_INPUT_1 = "ssid";
-const char* PARAM_INPUT_2 = "pass";
-const char* PARAM_INPUT_3 = "ip";
-const char* PARAM_INPUT_4 = "gateway";
-const char* PARAM_INPUT_5 = "dhcp";
-
-//Variables to save values from HTML form
-String ssid;
-String pass;
-String ip;
-String gateway;
-String netmask;
-String useDHCP;
-String debugEnabled;
-String githubToken;
-String gpioViewerEnabled;
-String otaEnabled;
-String updatesEnabled;
-String updateUrl;
-String storedFirmwareVersion;
-String storedFilesystemVersion;
-
-// Version tracking (loaded from current.info)
-String currentFirmwareVersion = "";
-String currentFilesystemVersion = "";
 
 // WiFi scan cache
 String cachedScanResults = "";
 unsigned long lastScanTime = 0;
-const unsigned long SCAN_INTERVAL = 10000; // 10 seconds
 bool scanInProgress = false;
+
+// Compatibility layer - reference settings module variables
+// These allow existing code to work without changes
+String& ssid = settings.ssid;
+String& pass = settings.password;
+String& ip = settings.ip;
+String& gateway = settings.gateway;
+String& netmask = settings.netmask;
+String& useDHCP = settings.useDHCP;
+String& debugEnabled = settings.debugEnabled;
+String& githubToken = settings.githubToken;
+String& gpioViewerEnabled = settings.gpioViewerEnabled;
+String& otaEnabled = settings.otaEnabled;
+String& updatesEnabled = settings.updatesEnabled;
+String& updateUrl = settings.updateUrl;
+String& storedFirmwareVersion = settings.firmwareVersion;
+String& storedFilesystemVersion = settings.filesystemVersion;
+
+// Aliases for version tracking (used in some functions)
+String& currentFirmwareVersion = settings.firmwareVersion;
+String& currentFilesystemVersion = settings.filesystemVersion;
 
 IPAddress localIP;
 IPAddress localGateway;
@@ -110,7 +97,7 @@ IPAddress localSubnet;
 
 // Timer variables
 unsigned long previousMillis = 0;
-const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
+const long interval = WIFI_CONNECT_TIMEOUT;  // WiFi connection timeout
 
 // Track if we're in AP mode
 bool isAPMode = false;
@@ -126,11 +113,10 @@ bool rebootScheduled = false;
 
 // Forward declaration
 void performReboot();
-void updateCurrentVersion();
 
 // Initialize LittleFS
 void initLittleFS() {
-  if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
+  if (!LittleFS.begin(true, LITTLEFS_BASE_PATH, LITTLEFS_MAX_FILES, LITTLEFS_PARTITION_LABEL)) {
     Serial.println("An error has occurred while mounting LittleFS");
   }
   Serial.println("LittleFS mounted successfully");
@@ -158,90 +144,19 @@ String jsonEscape(String str) {
   return result;
 }
 
-// Read current version from NVS
-void readCurrentVersion() {
-  preferences.begin("config", true);  // Read-only
-  currentFirmwareVersion = preferences.getString("fw_version", "2026-1.0.00");
-  currentFilesystemVersion = preferences.getString("fs_version", "2026-1.0.00");
-  preferences.end();
+// Compare versions (format: 2026-1.0.01)
+// Returns true if remote is newer than current
+bool compareVersions(String remoteVer, String currentVer) {
+  if (remoteVer.length() == 0 || currentVer.length() == 0) return false;
   
-  Serial.println("Loaded versions from NVS:");
-  Serial.println("  Firmware: " + currentFirmwareVersion);
-  Serial.println("  Filesystem: " + currentFilesystemVersion);
-}
-
-// Update version in NVS
-void updateCurrentVersion() {
-  preferences.begin("config", false);  // Read-write
-  preferences.putString("fw_version", currentFirmwareVersion);
-  preferences.putString("fs_version", currentFilesystemVersion);
-  preferences.end();
-  Serial.println("Updated versions in NVS");
-}
-
-// Read global config from NVS
-void readGlobalConfig() {
-  preferences.begin("config", true);  // Read-only
-  
-  ssid = preferences.getString("ssid", "");
-  ip = preferences.getString("ip", "");
-  gateway = preferences.getString("gateway", "");
-  netmask = preferences.getString("netmask", "255.255.255.0");
-  useDHCP = preferences.getString("dhcp", "true");
-  debugEnabled = preferences.getString("debug", "false");
-  gpioViewerEnabled = preferences.getString("gpioviewer", "false");
-  otaEnabled = preferences.getString("ota", "true");
-  updatesEnabled = preferences.getString("updates", "true");
-  updateUrl = preferences.getString("updateUrl", "https://api.github.com/repos/Mooijman/ESP32-baseline/releases/latest");
-  githubToken = preferences.getString("githubToken", "");
-  storedFirmwareVersion = preferences.getString("fw_version", "2026-1.0.00");
-  storedFilesystemVersion = preferences.getString("fs_version", "2026-1.0.00");
-  
-  preferences.end();
-  
-  Serial.println("Loaded config from NVS");
-}
-
-// Initialize NVS with default values on first boot
-void initializeNVS() {
-  preferences.begin("config", true);
-  bool hasConfig = preferences.isKey("ota");  // Use 'ota' instead of 'ip' since ip can be deleted on WiFi reset
-  preferences.end();
-  
-  if (hasConfig) {
-    Serial.println("NVS already initialized");
-    return;
-  }
-  
-  Serial.println("First boot detected - initializing NVS with default values...");
-  
-  preferences.begin("config", false);
-  
-  // No network defaults - WiFi manager will start on first boot
-  // SSID, password, IP, gateway and DHCP remain empty
-  
-  // Feature defaults
-  preferences.putString("debug", "false");
-  preferences.putString("gpioviewer", "false");
-  preferences.putString("ota", "true");
-  preferences.putString("updates", "true");
-  
-  // OTA defaults
-  preferences.putString("updateUrl", "https://api.github.com/repos/Mooijman/ESP32-baseline/releases/latest");
-  preferences.putString("githubToken", "");
-  
-  // Version defaults
-  preferences.putString("fw_version", "2026-1.0.00");
-  preferences.putString("fs_version", "2026-1.0.00");
-  
-  preferences.end();
-  
-  Serial.println("NVS initialized with defaults");
+  // Format: 2026-1.0.01
+  // Simply compare strings (lexicographic comparison works for this format)
+  return remoteVer > currentVer;
 }
 
 // Save update info to NVS
 void saveUpdateInfo() {
-  preferences.begin("ota", false);
+  preferences.begin(NVS_NAMESPACE_OTA, false);
   preferences.putString("remoteVer", updateInfo.remoteVersion);
   preferences.putString("remoteLFS", updateInfo.remoteLittlefsVersion);
   preferences.putString("fwUrl", updateInfo.firmwareUrl);
@@ -255,7 +170,7 @@ void saveUpdateInfo() {
 
 // Load update info from NVS
 void loadUpdateInfo() {
-  preferences.begin("ota", true);
+  preferences.begin(NVS_NAMESPACE_OTA, true);
   updateInfo.remoteVersion = preferences.getString("remoteVer", "");
   updateInfo.remoteLittlefsVersion = preferences.getString("remoteLFS", "");
   updateInfo.firmwareUrl = preferences.getString("fwUrl", "");
@@ -267,51 +182,6 @@ void loadUpdateInfo() {
   preferences.end();
   updateInfo.state = UPDATE_IDLE;
   updateInfo.downloadProgress = 0;
-}
-
-// Compare versions (format: 2026.1.0.01)
-// Returns true if remote is newer than current
-bool compareVersions(String remoteVer, String currentVer) {
-  if (remoteVer.length() == 0 || currentVer.length() == 0) return false;
-  
-  // Format: 2026.1.0.01
-  // Simply compare strings (lexicographic comparison works for this format)
-  return remoteVer > currentVer;
-}
-
-// Write global config to NVS
-void writeGlobalConfig() {
-  preferences.begin("config", false);  // Read-write
-  preferences.putString("ssid", ssid);
-  preferences.putString("ip", ip);
-  preferences.putString("gateway", gateway);
-  preferences.putString("netmask", netmask);
-  preferences.putString("dhcp", useDHCP);
-  preferences.putString("debug", debugEnabled);
-  preferences.putString("gpioviewer", gpioViewerEnabled);
-  preferences.putString("ota", otaEnabled);
-  preferences.putString("fw_version", storedFirmwareVersion);
-  preferences.putString("fs_version", storedFilesystemVersion);
-  
-  // Default updates to on if not set
-  if (updatesEnabled.isEmpty()) {
-    updatesEnabled = "on";
-  }
-  preferences.putString("updates", updatesEnabled);
-  
-  // Default updateUrl if not set
-  if (updateUrl.isEmpty()) {
-    updateUrl = "https://api.github.com/repos/Mooijman/ESP32-baseline/releases/latest";
-  }
-  preferences.putString("updateUrl", updateUrl);
-  
-  // GitHub token (optional, for private repos)
-  if (!githubToken.isEmpty()) {
-    preferences.putString("githubToken", githubToken);
-  }
-  
-  preferences.end();
-  Serial.println("Global config saved to NVS");
 }
 
 // Check for updates via GitHub API
@@ -516,7 +386,8 @@ bool downloadAndInstallFirmware(String url) {
         written += c;
         updateInfo.downloadProgress = (written * 100) / contentLength;
         
-        // Reset watchdog
+        // Reset watchdog timers
+        esp_task_wdt_reset();
         yield();
         
         if (written % 10240 == 0) { // Log every 10KB
@@ -524,6 +395,7 @@ bool downloadAndInstallFirmware(String url) {
         }
       }
     }
+    esp_task_wdt_reset();
     delay(1);
   }
   
@@ -561,7 +433,7 @@ bool downloadAndInstallFirmware(String url) {
     newVersion = newVersion.substring(3);
   }
   currentFirmwareVersion = newVersion;
-  updateCurrentVersion();
+  settings.updateVersions();
   
   return true;
 }
@@ -654,7 +526,8 @@ bool downloadAndInstallLittleFS(String url) {
         written += c;
         updateInfo.downloadProgress = (written * 100) / contentLength;
         
-        // Reset watchdog
+        // Reset watchdog timers
+        esp_task_wdt_reset();
         yield();
         
         if (written % 10240 == 0) {
@@ -662,6 +535,7 @@ bool downloadAndInstallLittleFS(String url) {
         }
       }
     }
+    esp_task_wdt_reset();
     delay(1);
   }
   
@@ -699,7 +573,7 @@ bool downloadAndInstallLittleFS(String url) {
     newVersion = newVersion.substring(3);
   }
   currentFilesystemVersion = newVersion;
-  updateCurrentVersion();
+  settings.updateVersions();
   
   return true;
 }
@@ -760,7 +634,7 @@ bool initWiFi() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD_RATE);
 
   // Initialize OLED display
   display.init();
@@ -777,54 +651,19 @@ void setup() {
   initLittleFS();
 
   // Initialize NVS with defaults on first boot
-  initializeNVS();
+  settings.initialize();
 
   // Load values from NVS
-  readGlobalConfig();
-  preferences.begin("config", true);
-  pass = preferences.getString("pass", "");
-  preferences.end();
+  settings.load();
   
-  Serial.println("Loaded credentials:");
-  Serial.println("SSID: " + ssid);
-  Serial.println("Password: " + String(pass.length() > 0 ? "<set>" : "<empty>"));
-  Serial.println("DHCP: " + useDHCP);
+  // Sync versions with compile-time defines
+  settings.syncVersions();
   
-  // Set default GPIO Viewer state to off if not set
-  if (gpioViewerEnabled == "") {
-    gpioViewerEnabled = "off";
-    writeGlobalConfig();
-  }
-  
-  // Set default OTA state to on if not set
-  if (otaEnabled == "") {
-    otaEnabled = "on";
-    writeGlobalConfig();
-  }
-  
-  // Set default updates state to on if not set
-  if (updatesEnabled.isEmpty()) {
-    updatesEnabled = "on";
-    writeGlobalConfig();
-  }
-  
-  // Set default updateUrl if not set
-  if (updateUrl.isEmpty()) {
-    updateUrl = "https://api.github.com/repos/Mooijman/ESP32-baseline/releases/latest";
-    writeGlobalConfig();
-  }
-  
-  Serial.println("Loaded credentials:");
-  Serial.println("SSID: " + ssid);
-  Serial.println("Password: " + pass);
-  Serial.println("DHCP: " + useDHCP);
+  // Print loaded settings
+  settings.print();
   
   // Initialize OTA update system
-  preferences.begin("ota", false);
   loadUpdateInfo();
-  
-  // Load version strings from current.info
-  readCurrentVersion();
   
   Serial.println("OTA Update System Initialized");
   Serial.println("Firmware Version: " + currentFirmwareVersion);
@@ -878,8 +717,9 @@ void setup() {
       String otaStatus = otaEnabled;
       bool otaEnabledBool = (otaStatus == "true" || otaStatus == "on");
       bool dhcpEnabledBool = (useDHCP == "true" || useDHCP == "on");
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
       
-      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool](const String& var) -> String {
+      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool](const String& var) -> String {
         if (var == "SSID") {
           return ssid;
         }
@@ -899,8 +739,10 @@ void setup() {
           return dhcpEnabledBool ? "checked" : "";
         }
         if (var == "DEBUG_CHECKED") {
-          bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
           return debugEnabledBool ? "checked" : "";
+        }
+        if (var == "DEBUG_DISPLAY") {
+          return debugEnabledBool ? "style=\"display: block;\"" : "style=\"display: none;\"";
         }
         if (var == "FW_VERSION") {
           return storedFirmwareVersion;
@@ -914,16 +756,22 @@ void setup() {
         if (var == "GPIOVIEWER_BUTTON") {
           if (gpioEnabled) {
             String ipAddr = WiFi.localIP().toString();
-            return "<a href=\"http://" + ipAddr + ":5555\" target=\"_blank\" class=\"btn-small\" style=\"width: 100px; text-align: center;\">Open</a>";
+            return "<a href=\"http://" + ipAddr + ":5555\" target=\"_blank\" class=\"btn-small btn-open\">Open</a>";
           }
           return "";
+        }
+        if (var == "OTA_CHECKED") {
+          return otaEnabledBool ? "checked" : "";
         }
         if (var == "UPDATES_CHECKED") {
           return updatesEnabledBool ? "checked" : "";
         }
+        if (var == "UPDATES_DISPLAY") {
+          return updatesEnabledBool ? "style=\"display: flex;\"" : "style=\"display: none;\"";
+        }
         if (var == "UPDATES_BUTTON") {
           if (updatesEnabledBool) {
-            return "<a href=\"/update\" class=\"btn-small\" style=\"width: 100px; text-align: center;\">Open</a>";
+            return "<a href=\"/update\" class=\"btn-small btn-update-link\">Update</a>";
           }
           return "";
         }
@@ -932,6 +780,9 @@ void setup() {
         }
         if (var == "GITHUB_TOKEN") {
           return githubToken;
+        }
+        if (var == "FILE_MANAGER_VISIBILITY") {
+          return debugEnabledBool ? "style=\"visibility: visible;\"" : "style=\"visibility: hidden;\"";
         }
         return String();
       });
@@ -974,12 +825,13 @@ void setup() {
       }
       
       // DHCP checkbox
-      String newDhcp = request->hasParam("dhcp", true) ? "true" : "false";
-      if (newDhcp != useDHCP) {
+      String newDhcp = request->hasParam("dhcp", true) ? "on" : "off";
+      String currentDhcp = (useDHCP == "true" || useDHCP == "on") ? "on" : "off";
+      if (newDhcp != currentDhcp) {
         useDHCP = newDhcp;
         configChanged = true;
         shouldReboot = true;
-        Serial.println("DHCP set to: " + useDHCP);
+        Serial.println("DHCP changed to: " + useDHCP);
       }
       
       // Network settings
@@ -1038,8 +890,14 @@ void setup() {
           if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
             gpioViewerEnabled = "off";
             Serial.println("GPIO Viewer also disabled - powercycle required");
-            message = "<img src='hex100.png' alt='' class='icon-inline'>Powercycle ESP32 now!";
+            message = "Powercycle device now!";
             gpioDisabled = true;
+          }
+          
+          // Also disable OTA when debug is disabled
+          if (otaEnabled == "on" || otaEnabled == "true") {
+            otaEnabled = "off";
+            Serial.println("OTA also disabled");
           }
         }
       }
@@ -1074,7 +932,7 @@ void setup() {
             gpioViewerEnabled = "on";
             configChanged = true;
             Serial.println("GPIO Viewer enabled - rebooting...");
-            message = "<img src='hex100.png' alt='' class='icon-inline'>GPIO Viewer enabled - please wait";
+            message = "GPIO Viewer enabled. Rebooting.";
             shouldReboot = true;
           }
         } else {
@@ -1083,8 +941,25 @@ void setup() {
             gpioViewerEnabled = "off";
             configChanged = true;
             Serial.println("GPIO Viewer disabled - powercycle required");
-            message = "<img src='hex100.png' alt='' class='icon-inline'>Powercycle ESP32 now!";
+            message = "GPIO Viewer disabled. Powercycle device.";
             gpioDisabled = true;
+          }
+        }
+        
+        // Check OTA checkbox (only if debug is enabled)
+        if (request->hasParam("ota", true)) {
+          // Checkbox is checked - enable OTA
+          if (otaEnabled != "on" && otaEnabled != "true") {
+            otaEnabled = "on";
+            configChanged = true;
+            Serial.println("OTA enabled");
+          }
+        } else {
+          // Checkbox is not checked - disable OTA
+          if (otaEnabled == "on" || otaEnabled == "true") {
+            otaEnabled = "off";
+            configChanged = true;
+            Serial.println("OTA disabled");
           }
         }
       }
@@ -1130,25 +1005,30 @@ void setup() {
       
       // Save config changes if needed
       if (configChanged) {
-        writeGlobalConfig();
+        settings.save();
       }
       
       // Set default message if reboot needed but no message set
       if (shouldReboot && message.isEmpty()) {
-        message = "<img src='hex100.png' alt='' class='icon-inline'>Settings saved - rebooting...";
+        message = "Settings saved";
       }
       
       // Send confirmation page
       if (shouldReboot || gpioDisabled) {
-        request->send(LittleFS, "/confirmation.html", "text/html", false, [message, shouldReboot, gpioDisabled](const String& var) -> String {
+        request->send(LittleFS, "/confirm.html", "text/html", false, [message, shouldReboot, gpioDisabled](const String& var) -> String {
           if (var == "MESSAGE") {
             return message;
           }
-          if (var == "REFRESH_META") {
-            return shouldReboot ? "<meta http-equiv='refresh' content='20;url=/settings'>" : "";
+          if (var == "MESSAGE_CLASS") {
+            return (gpioDisabled || shouldReboot) ? "text-error" : "";
           }
           if (var == "RELOAD_BUTTON") {
-            return gpioDisabled ? "<div class='text-right'><input type='button' value='Reload' onclick='window.location.reload();' class='btn-reload'></div>" : "";
+            if (shouldReboot) {
+              return "<div class='form-actions-right'><input type='button' value='Done' onclick='window.location.href=\"/settings\";' class='btn-small btn-width-100'></div>";
+            } else if (gpioDisabled) {
+              return "<div class='form-actions-right'><input type='button' value='Done' onclick='window.location.href=\"/settings\";' class='btn-small btn-width-100'></div>";
+            }
+            return "";
           }
           return String();
         });
@@ -1162,6 +1042,14 @@ void setup() {
         // No changes - just redirect back
         request->redirect("/settings");
       }
+    });
+    
+    // Reboot endpoint
+    server.on("/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
+      Serial.println("Manual reboot requested");
+      request->send(200, "text/plain", "Rebooting...");
+      rebootScheduled = true;
+      rebootTime = millis();
     });
     
     // Reset WiFi settings
@@ -1197,14 +1085,15 @@ void setup() {
     
     // API: Get update status
     server.on("/api/update/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      // Reload current versions from file (in case they were manually changed)
-      readCurrentVersion();
+      // Reload current versions (sync with compile-time versions)
+      settings.syncVersions();
       
-      DynamicJsonDocument doc(512);
+      JsonDocument doc;
       
       doc["currentFirmwareVersion"] = currentFirmwareVersion;
       doc["currentFilesystemVersion"] = currentFilesystemVersion;
       doc["updatesEnabled"] = (updatesEnabled == "on" || updatesEnabled == "true");
+      doc["debugEnabled"] = (debugEnabled == "on" || debugEnabled == "true");
       doc["remoteVersion"] = updateInfo.remoteVersion;
       doc["state"] = updateInfo.state;
       doc["firmwareAvailable"] = updateInfo.firmwareAvailable;
@@ -1300,6 +1189,81 @@ void setup() {
         ESP.restart();
       }
       // If filesystem was updated, system halts here - user must power cycle
+    });
+    
+    // API: Reinstall current version (debug only)
+    server.on("/api/update/reinstall", HTTP_POST, [](AsyncWebServerRequest *request) {
+      Serial.println("=== REINSTALL REQUESTED ===");
+      
+      // Only allow if debug is enabled
+      if (debugEnabled != "on" && debugEnabled != "true") {
+        request->send(403, "application/json", "{\"success\":false,\"message\":\"Debug mode required\"}");
+        return;
+      }
+      
+      String type = "both";
+      if (request->hasParam("type", true)) {
+        type = request->getParam("type", true)->value();
+      }
+      
+      Serial.println("Reinstall type: " + type);
+      
+      // Use the current GitHub URLs if we have them, otherwise construct from stored version
+      String fwUrl = updateInfo.firmwareUrl;
+      String fsUrl = updateInfo.littlefsUrl;
+      
+      bool success = false;
+      String message = "";
+      bool isFilesystemUpdate = false;
+      
+      if (type == "firmware" && !fwUrl.isEmpty()) {
+        success = downloadAndInstallFirmware(fwUrl);
+        message = success ? "Firmware reinstalled" : "Firmware reinstall failed";
+      } else if (type == "littlefs" && !fsUrl.isEmpty()) {
+        success = downloadAndInstallLittleFS(fsUrl);
+        message = success ? "LittleFS reinstalled" : "LittleFS reinstall failed";
+        isFilesystemUpdate = true;
+      } else if (type == "both") {
+        if (!fwUrl.isEmpty()) {
+          success = downloadAndInstallFirmware(fwUrl);
+          if (!success) {
+            message = "Firmware reinstall failed";
+          }
+        }
+        if (success && !fsUrl.isEmpty()) {
+          success = downloadAndInstallLittleFS(fsUrl);
+          if (!success) {
+            message = "LittleFS reinstall failed";
+          } else {
+            message = "Both reinstalled";
+          }
+          isFilesystemUpdate = true;
+        } else if (success) {
+          message = "Firmware reinstalled";
+        }
+      } else {
+        message = "No update URLs available. Check for updates first.";
+      }
+      
+      // Set filesystem update flag
+      if (success && isFilesystemUpdate) {
+        updateInfo.filesystemUpdateDone = true;
+      }
+      
+      DynamicJsonDocument doc(256);
+      doc["success"] = success;
+      doc["message"] = message;
+      doc["rebootRequired"] = success && !isFilesystemUpdate;
+      
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+      
+      // Only restart if firmware was updated (not filesystem)
+      if (success && !isFilesystemUpdate) {
+        delay(2000);
+        ESP.restart();
+      }
     });
     
     // API: List all files
@@ -1465,7 +1429,7 @@ void setup() {
       unsigned long currentTime = millis();
       
       // If no cached results or cache expired, trigger async scan
-      if (cachedScanResults.isEmpty() || (currentTime - lastScanTime > SCAN_INTERVAL)) {
+      if (cachedScanResults.isEmpty() || (currentTime - lastScanTime > WIFI_SCAN_CACHE_INTERVAL)) {
         if (!scanInProgress) {
           scanInProgress = true;
           WiFi.scanNetworks(true); // Start async scan
@@ -1564,7 +1528,7 @@ void setup() {
       
       // Save all network settings to config file
       if (settingsChanged) {
-        writeGlobalConfig();
+        settings.saveNetwork();
       }
       
       String responseMsg = "Done. ESP will restart and connect to your router";
@@ -1585,34 +1549,52 @@ void setup() {
   }  // End of else (AP mode)
 }  // End of setup()
 
-void loop() {
-  // Non-blocking IP display clear after 3 seconds
-  if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > 3000)) {
+// ============================================================================
+// LOOP HELPER FUNCTIONS
+// ============================================================================
+
+// Handle display tasks (IP display timeout, etc.)
+void handleDisplayTasks() {
+  // Non-blocking IP display clear after timeout
+  if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > DISPLAY_IP_SHOW_DURATION)) {
     display.clear();
     display.display();
     ipDisplayCleared = true;
   }
-  
-  // Handle scheduled reboot after 2 seconds delay
-  if (rebootScheduled && (millis() - rebootTime > 2000)) {
-    performReboot();
-  }
-  
+}
+
+// Handle network tasks (DNS, OTA, WiFi)
+void handleNetworkTasks() {
   // Process DNS requests only in AP mode for captive portal
   if (isAPMode) {
     dnsServer.processNextRequest();
   }
   
   // Handle ArduinoOTA updates (only if enabled and not in AP mode)
-  if (!isAPMode && (otaEnabled == "on" || otaEnabled == "true")) {
+  if (!isAPMode && Settings::stringToBool(settings.otaEnabled)) {
     ArduinoOTA.handle();
   }
-  
-  // Background update check (only if enabled and not in AP mode)
-  // Background update checks removed - only check when update page is opened
+}
+
+// Handle system tasks (scheduled reboots)
+void handleSystemTasks() {
+  // Handle scheduled reboot after delay
+  if (rebootScheduled && (millis() - rebootTime > REBOOT_DELAY)) {
+    performReboot();
+  }
+}
+
+// ============================================================================
+// MAIN LOOP
+// ============================================================================
+
+void loop() {
+  handleDisplayTasks();
+  handleSystemTasks();
+  handleNetworkTasks();
   
   // Small delay to prevent excessive CPU usage
-  delay(10);
+  delay(LOOP_DELAY);
 }
 
 // Function to show reboot message and restart

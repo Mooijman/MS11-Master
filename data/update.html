@@ -6,12 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
-  <style>
-    .btn-update:hover {
-      background-color: #e74c3c !important;
-      border-color: #c0392b !important;
-    }
-  </style>
 </head>
 <body class="card-layout">
   <div class="topnav">
@@ -33,48 +27,53 @@
             <div id="update-content">
               <!-- Firmware Info -->
               <div class="margin-bottom-20">
-                <p class="text-left text-muted" style="line-height: 1.6;">
-                  <span style="display: inline-block; width: 30px;"><strong>FW</strong></span><span id="fw-info">-</span><br>
-                  <span style="display: inline-block; width: 30px;"><strong>FS</strong></span><span id="fs-info">-</span>
+                <p class="text-left text-muted line-height-16">
+                  <span class="version-span-inline"><strong>FW</strong></span><span id="fw-info">-</span><br>
+                  <span class="version-span-inline"><strong>FS</strong></span><span id="fs-info">-</span>
                 </p>
-                <p style="font-style:italic; color:#999; margin-top:10px; text-align:left;">
+                <p class="italic-muted-text">
                   <span id="update-availability">-</span>
                 </p>
               </div>
               
-              <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+              <hr class="hr-divider">
               
               <!-- Update button (shown when update available) -->
-              <div id="update-section" class="text-right" style="display:none;">
+              <div id="update-section" class="text-right hidden">
                 <button id="update-btn" class="btn-small btn-update">Update</button>
+              </div>
+              
+              <!-- Reinstall button (shown when debug enabled and up-to-date) -->
+              <div id="reinstall-section" class="text-right hidden">
+                <button id="reinstall-btn" class="btn-small btn-reinstall">Reinstall</button>
               </div>
             </div>
             
-            <div id="update-disabled" style="display:none;">
-              <p class="text-left text-muted" style="line-height: 1.6;">
-                <span style="display: inline-block; width: 30px;"><strong>FW</strong></span><span id="fw-info-disabled">-</span><br>
-                <span style="display: inline-block; width: 30px;"><strong>FS</strong></span><span id="fs-info-disabled">-</span>
+            <div id="update-disabled" class="hidden">
+              <p class="text-left text-muted line-height-16">
+                <span class="version-span-inline"><strong>FW</strong></span><span id="fw-info-disabled">-</span><br>
+                <span class="version-span-inline"><strong>FS</strong></span><span id="fs-info-disabled">-</span>
               </p>
-              <p style="font-style:italic;color:#999;margin-top:10px;text-align:left;">updates disabled</p>
+              <p class="italic-muted-text">updates disabled</p>
               
-              <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+              <hr class="hr-divider">
             </div>
             
-            <div id="update-status-section" style="display:none;" class="margin-top-20">
-              <div id="update-error" class="margin-bottom-10" style="display:none;color:#e74c3c;">
+            <div id="update-status-section" class="margin-top-20 hidden">
+              <div id="update-error" class="margin-bottom-10 error-text hidden">
                 <p><strong>Fout:</strong> <span id="error-message"></span></p>
               </div>
               
-              <div id="progress-ota" style="display:none;">
+              <div id="progress-ota" class="hidden">
                 <div class="progress-bar-bg">
-                  <div id="progress-bar-ota" class="progress-bar" style="width:0%"></div>
+                  <div id="progress-bar-ota" class="progress-bar progress-bar-width-0"></div>
                 </div>
                 <p id="progress-text-ota" class="progress-text text-center">Downloading: 0%</p>
               </div>
               
-              <div id="reboot-required" style="display:none;margin-top:20px;padding:15px;background-color:#fff3cd;border:1px solid #ffc107;border-radius:4px;">
-                <p style="margin:0;color:#856404;"><strong>⚠️ Filesystem updated.</strong></p>
-                <p style="margin:10px 0 0 0;color:#856404;">Power cycle the device now.</p>
+              <div id="reboot-required" class="reboot-warning-box hidden">
+                <p class="reboot-warning-text"><strong>⚠️ Filesystem updated.</strong></p>
+                <p class="reboot-warning-text-spacing">Power cycle the device now.</p>
               </div>
             </div>
           </div>
@@ -141,17 +140,27 @@
               updateBtn.onclick = () => installUpdate('littlefs');
             }
             document.getElementById('update-section').style.display = 'block';
+            document.getElementById('reinstall-section').style.display = 'none';
           } else if (data.lastCheck > 0) {
             document.getElementById('update-availability').textContent = 'up-to-date';
             document.getElementById('update-availability').style.color = '#999';
             // Hide Update button
             document.getElementById('update-section').style.display = 'none';
+            // Show Reinstall button if debug is enabled
+            if (data.debugEnabled) {
+              const reinstallBtn = document.getElementById('reinstall-btn');
+              reinstallBtn.onclick = () => reinstallVersion('both');
+              document.getElementById('reinstall-section').style.display = 'block';
+            } else {
+              document.getElementById('reinstall-section').style.display = 'none';
+            }
           } else {
             document.getElementById('update-availability').textContent = '-';
             document.getElementById('update-actions').style.display = 'none';
             document.getElementById('update-status-section').style.display = 'none';
             // Hide Update button
             document.getElementById('update-section').style.display = 'none';
+            document.getElementById('reinstall-section').style.display = 'none';
           }
           
           // Show error if present
@@ -256,6 +265,41 @@
       .catch(error => {
         console.error('Update error:', error);
         alert('Update failed: ' + error);
+        stopPolling();
+      });
+    }
+    
+    function reinstallVersion(type) {
+      console.log('reinstallVersion called with type:', type);
+      if (!confirm('This will reinstall the current version. Device will restart. Continue?')) return;
+      
+      console.log('User confirmed, starting reinstall...');
+      startPolling();
+      
+      fetch('/api/update/reinstall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'type=' + type
+      })
+      .then(response => {
+        console.log('Response received:', response.status);
+        return response.json();
+      })
+      .then(data => {
+        console.log('Response data:', data);
+        if (data.rebootRequired) {
+          console.log('Reboot required, device will restart');
+          alert('Reinstall started! Device will restart...');
+        } else if (!data.success) {
+          alert('Reinstall failed: ' + data.message);
+          stopPolling();
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(error => {
+        console.error('Reinstall error:', error);
+        alert('Reinstall failed: ' + error);
         stopPolling();
       });
     }
