@@ -90,6 +90,7 @@
   
   <script>
     let pollInterval;
+    let currentUpdateType = ''; // Track which type of update is in progress
     
     function updateStatus() {
       fetch('/api/update/status')
@@ -185,6 +186,19 @@
           // Show progress during download/install
           if (data.state === 3 || data.state === 4) { // DOWNLOADING or INSTALLING
             document.getElementById('update-warning').style.display = 'block';
+            
+            // Update warning text based on update type
+            const warningTextEl = document.querySelector('#update-warning .reboot-warning-text');
+            if (currentUpdateType === 'firmware') {
+              warningTextEl.textContent = '⚠️ Updating Firmware';
+            } else if (currentUpdateType === 'littlefs') {
+              warningTextEl.textContent = '⚠️ Updating Filesystem';
+            } else if (currentUpdateType === 'both') {
+              warningTextEl.textContent = '⚠️ Updating Device';
+            } else {
+              warningTextEl.textContent = '⚠️ Updating...';
+            }
+            
             document.getElementById('progress-ota').style.display = 'block';
             document.getElementById('progress-bar-ota').style.width = data.downloadProgress + '%';
             const stateText = data.state === 3 ? 'Downloading' : 'Installing';
@@ -252,6 +266,7 @@
     
     function installUpdate(type) {
       console.log('installUpdate called with type:', type);
+      currentUpdateType = type; // Store the update type for display purposes
       if (!confirm('Device will restart after update. Continue?')) return;
       
       console.log('User confirmed, starting update...');
