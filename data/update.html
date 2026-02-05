@@ -19,7 +19,7 @@
           <a href="/" class="card-close">&times;</a>
         </div>
         
-        <div class="padding-top-20">
+        <div class="padding-top-10">
           
           <!-- OTA Update Section -->
           <div>
@@ -69,13 +69,6 @@
                 <p class="update-warning-text-spacing">DO NOT DISCONNECT POWER!</p>
               </div>
               
-              <div id="progress-ota" class="hidden">
-                <div class="progress-bar-bg">
-                  <div id="progress-bar-ota" class="progress-bar progress-bar-width-0"></div>
-                </div>
-                <p id="progress-text-ota" class="progress-text text-center">Downloading: 0%</p>
-              </div>
-              
               <div id="reboot-required" class="reboot-warning-box hidden">
                 <p class="reboot-warning-text"><strong>⚠️ Filesystem updated.</strong></p>
                 <p class="reboot-warning-text-spacing">Power cycle the device now.</p>
@@ -91,6 +84,31 @@
   <script>
     let pollInterval;
     let currentUpdateType = ''; // Track which type of update is in progress
+    let forcedUpdateInProgress = false;
+
+    function updateWarningText() {
+      const warningTextEl = document.querySelector('#update-warning .update-warning-text');
+      if (!warningTextEl) return;
+      if (currentUpdateType === 'firmware') {
+        warningTextEl.textContent = '⚠️ Updating Firmware';
+      } else if (currentUpdateType === 'littlefs') {
+        warningTextEl.textContent = '⚠️ Updating Filesystem';
+      } else if (currentUpdateType === 'both') {
+        warningTextEl.textContent = '⚠️ Updating Device';
+      } else {
+        warningTextEl.textContent = '⚠️ Updating...';
+      }
+    }
+
+    function showUpdateInProgressUI() {
+      updateWarningText();
+      document.getElementById('update-warning').style.display = 'block';
+      document.querySelector('.card .header a.card-close').style.display = 'none';
+      document.getElementById('update-content').style.display = 'none';
+      document.getElementById('update-disabled').style.display = 'none';
+      document.getElementById('update-status-section').style.display = 'block';
+      document.getElementById('reboot-required').style.display = 'none';
+    }
     
     function updateStatus() {
       fetch('/api/update/status')
@@ -185,47 +203,41 @@
           
           // Show progress during download/install
           if (data.state === 3 || data.state === 4) { // DOWNLOADING or INSTALLING
-            document.getElementById('update-warning').style.display = 'block';
-            
-            // Update warning text based on update type
-            const warningTextEl = document.querySelector('#update-warning .reboot-warning-text');
-            if (currentUpdateType === 'firmware') {
-              warningTextEl.textContent = '⚠️ Updating Firmware';
-            } else if (currentUpdateType === 'littlefs') {
-              warningTextEl.textContent = '⚠️ Updating Filesystem';
-            } else if (currentUpdateType === 'both') {
-              warningTextEl.textContent = '⚠️ Updating Device';
-            } else {
-              warningTextEl.textContent = '⚠️ Updating...';
-            }
-            
-            document.getElementById('progress-ota').style.display = 'block';
-            document.getElementById('progress-bar-ota').style.width = data.downloadProgress + '%';
-            const stateText = data.state === 3 ? 'Downloading' : 'Installing';
-            document.getElementById('progress-text-ota').textContent = stateText + ': ' + data.downloadProgress + '%';
-            document.getElementById('update-status-section').style.display = 'block';
-            document.getElementById('reboot-required').style.display = 'none';
+            forcedUpdateInProgress = true;
+            showUpdateInProgressUI();
+            startPolling();
+          } else if (forcedUpdateInProgress && (data.state === 0 || data.state === 1 || data.state === 2)) {
+            // Show warning immediately after confirm, before download starts
+            showUpdateInProgressUI();
             startPolling();
           } else {
             document.getElementById('update-warning').style.display = 'none';
-            document.getElementById('progress-ota').style.display = 'none';
+            document.querySelector('.card .header a.card-close').style.display = '';
+            document.getElementById('update-content').style.display = 'block';
+            document.getElementById('update-disabled').style.display = 'none';
             if (data.state !== 2 && data.state !== 1) { // Not AVAILABLE or CHECKING
               stopPolling();
             }
           }
           
           // Auto reload after successful firmware update (not filesystem)
+          if (data.state === 6) { // ERROR
+            forcedUpdateInProgress = false;
+          }
           if (data.state === 5 && !data.filesystemUpdateDone) { // SUCCESS - firmware only
+            forcedUpdateInProgress = false;
             setTimeout(() => {
               window.location.reload();
             }, 2000);
           } else if (data.state === 5 && data.filesystemUpdateDone) { // SUCCESS - filesystem
+            forcedUpdateInProgress = false;
             // Hide all content except reboot-required box
             document.getElementById('update-content').style.display = 'none';
             document.getElementById('update-disabled').style.display = 'none';
-            document.getElementById('progress-ota').style.display = 'none';
+            document.getElementById('update-warning').style.display = 'none';
             document.getElementById('reboot-required').style.display = 'block';
             document.getElementById('update-status-section').style.display = 'block';
+            document.querySelector('.card .header a.card-close').style.display = 'none';
             stopPolling();
           }
         })
@@ -270,6 +282,8 @@
       if (!confirm('Device will restart after update. Continue?')) return;
       
       console.log('User confirmed, starting update...');
+      forcedUpdateInProgress = true;
+      showUpdateInProgressUI();
       startPolling();
       
       fetch('/api/update/install', {
@@ -297,9 +311,12 @@
     
     function reinstallVersion(type) {
       console.log('reinstallVersion called with type:', type);
+      currentUpdateType = type;
       if (!confirm('This will reinstall the current version. Device will restart. Continue?')) return;
       
       console.log('User confirmed, starting reinstall...');
+      forcedUpdateInProgress = true;
+      showUpdateInProgressUI();
       startPolling();
       
       fetch('/api/update/reinstall', {
