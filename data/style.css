@@ -492,8 +492,10 @@ a#gpioViewerBtn:hover {
   flex: 1;
   font-weight: 500;
   color: var(--color-text-primary);
-  word-break: break-all;
+  overflow-wrap: break-word;
+  word-break: normal;
   text-align: left;
+  min-width: 0;
 }
 
 .card-layout .file-size {
@@ -1012,4 +1014,42 @@ a#gpioViewerBtn:hover {
 .update-warning-text-spacing {
   margin: var(--spacing-lg) 0 0 0;
   color: #c62828;
+}
+
+/* Mobile Responsive - Filemanager */
+@media (max-width: 768px) {
+  .card-layout .file-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+  
+  .card-layout .file-name {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+  
+  .card-layout .file-size {
+    grid-column: 1;
+    grid-row: 2;
+    margin-right: 0;
+    text-align: left;
+    align-self: center;
+  }
+  
+  .card-layout .file-actions {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    align-self: center;
+  }
+  
+  .card-layout .file-btn {
+    min-width: 80px;
+    width: 80px;
+  }
 }

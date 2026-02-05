@@ -2,6 +2,33 @@
 #define CONFIG_H
 
 // ============================================================================
+// FEATURE FLAGS - Module Enable/Disable
+// ============================================================================
+// Comment out any feature to disable it and reduce firmware size
+// Core modules (always enabled): WiFi Manager, Settings, Web Server, Index
+
+// Display & Debugging
+#define FEATURE_OLED_DISPLAY        // SSD1306 OLED display support
+#define FEATURE_GPIO_VIEWER         // Real-time GPIO monitoring (debug)
+
+// File System & Management
+#define FEATURE_FILE_MANAGER        // Web-based LittleFS file manager (debug)
+
+// Diagnostics & Tools
+#define FEATURE_I2C_SCANNER         // I2C bus scanner and diagnostics (debug)
+
+// Updates & Maintenance
+#define FEATURE_OTA_UPDATES         // ArduinoOTA local network updates
+#define FEATURE_GITHUB_UPDATES      // Automatic updates via GitHub releases
+
+// Future modules (not yet implemented)
+// #define FEATURE_MQTT_CLIENT      // MQTT messaging
+// #define FEATURE_NTP_TIME         // Network time synchronization
+// #define FEATURE_MDNS             // mDNS/Bonjour (esp32.local)
+// #define FEATURE_WEBSOCKET        // WebSocket real-time communication
+// #define FEATURE_AUTH             // Web interface authentication
+
+// ============================================================================
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
