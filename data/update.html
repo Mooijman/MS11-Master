@@ -267,15 +267,12 @@
         console.log('Response data:', data);
         if (data.rebootRequired) {
           console.log('Reboot required, device will restart');
-          alert('Update started! Device will restart...');
         } else if (!data.success) {
-          alert('Update failed: ' + data.message);
           stopPolling();
         }
       })
       .catch(error => {
         console.error('Update error:', error);
-        alert('Update failed: ' + error);
         stopPolling();
       });
     }
@@ -300,17 +297,12 @@
         console.log('Response data:', data);
         if (data.rebootRequired) {
           console.log('Reboot required, device will restart');
-          alert('Reinstall started! Device will restart...');
         } else if (!data.success) {
-          alert('Reinstall failed: ' + data.message);
           stopPolling();
-        } else {
-          alert(data.message);
         }
       })
       .catch(error => {
         console.error('Reinstall error:', error);
-        alert('Reinstall failed: ' + error);
         stopPolling();
       });
     }
