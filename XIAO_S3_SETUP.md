@@ -144,8 +144,8 @@ And update GPIO pins in `include/config.h`:
    - Validate GitHub OTA update mechanism
 
 2. **Production Deployment**:
-   - Tag release as `2026-1.0.15` (or next version)
-   - Upload binaries: `fw-2026-1.0.15.bin` and `fs-2026-1.0.15.bin`
+   - Tag release as `2026.1.1.08` (or next version)
+   - Upload binaries: `fw-2026.1.1.08.bin` and `fs-2026.1.1.08.bin`
    - Publish GitHub release
 
 3. **Future Enhancements**:
@@ -155,8 +155,8 @@ And update GPIO pins in `include/config.h`:
 
 ## Version Information
 
-- **Firmware Version**: `fw-2026-1.0.14` (from config.h)
-- **Filesystem Version**: `fs-2026-1.0.14` (from config.h)
+- **Firmware Version**: `fw-2026.1.1.08` (from config.h)
+- **Filesystem Version**: `fs-2026.1.1.08` (from config.h)
 - **Target Hardware**: XIAO ESP32-S3 (seeed_xiao_esp32s3)
 - **Platform**: Espressif 32 v53.3.11
 

@@ -1,6 +1,6 @@
 # Quick Reference Guide - ESP32S3-Base Project
 
-**Last Updated**: 6 February 2026 | **Version**: 2026.1.1.05
+**Last Updated**: 6 February 2026 | **Version**: 2026.1.1.08
 
 ## 📱 Project at a Glance
 
@@ -8,8 +8,8 @@ ESP32-S3 IoT baseline with WiFi manager, OTA updates, web interface, NTP time sy
 
 - **Board**: XIAO ESP32-S3 (8MB flash, 320KB RAM)
 - **Status**: ✅ Production ready
-- **Latest Version**: 2026.1.1.05 (Timezone selection)
-- **Firmware Size**: 1.33MB (67% of OTA partition)
+- **Latest Version**: 2026.1.1.08 (GPIO Viewer button alignment fix)
+- **Firmware Size**: 1.33MB (67.8% of OTA partition)
 
 ## 🚀 Quick Start
 
@@ -136,7 +136,7 @@ NTP:          ON (true)    ← Time sync enabled
 ## 📊 Memory Status
 
 ```
-Firmware:  1,330,848 bytes (67.7% of 1.92MB OTA partition)
+Firmware:  1,333,968 bytes (67.8% of 1.92MB OTA partition)
 RAM:       51,588 bytes (15.7% of 320KB)
 LittleFS:  512KB total (116KB web files, 396KB free)
 Flash:     4.45MB of 8MB used (55%)
@@ -162,6 +162,9 @@ Flash:     4.45MB of 8MB used (55%)
 # ArduinoOTA enabled on port 3232 (if debug ON)
 # Hostname: ESP32-Base
 pio run -e esp32s3dev -t upload
+
+# Filesystem upload via OTA
+pio run -e esp32s3dev -t uploadfs --upload-port <ip-adres>
 ```
 
 ## 🐛 Debugging
@@ -283,30 +286,29 @@ void syncTimeIfEnabled() {
 ### Version Bumping
 ```bash
 # Edit include/config.h
-FIRMWARE_VERSION "fw-2026-1-1-05"
-FILESYSTEM_VERSION "fs-2026-1-1-05"
+FIRMWARE_VERSION "fw-2026.1.1.08"
+FILESYSTEM_VERSION "fs-2026.1.1.08"
 
 # Build
 pio run -e esp32s3dev
 pio run -e esp32s3dev -t buildfs
 
 # Copy binaries
-mkdir -p release/2026.1.1.05
-cp .pio/build/esp32s3dev/firmware.bin release/2026.1.1.05/fw-2026.1.1.05.bin
-cp .pio/build/esp32s3dev/littlefs.bin release/2026.1.1.05/fs-2026.1.1.05.bin
+mkdir -p release/2026.1.1.08
+cp .pio/build/esp32s3dev/firmware.bin release/2026.1.1.08/fw-2026.1.1.08.bin
+cp .pio/build/esp32s3dev/littlefs.bin release/2026.1.1.08/fs-2026.1.1.08.bin
 
 # Git
 git add -A
-git commit -m "v2026.1.1.05: Feature description"
-git tag 2026.1.1.05
-git push && git push origin 2026.1.1.05
+git commit -m "v2026.1.1.08: Feature description"
+git tag 2026.1.1.08
+git push && git push origin 2026.1.1.08
 
 # Release via GitHub CLI
-printf '%s\n' '### Added' 'Feature list' | \
-  gh release create 2026.1.1.05 \
-    release/2026.1.1.05/fw-*.bin \
-    release/2026.1.1.05/fs-*.bin \
-    --title "2026.1.1.05 - Title" --notes-file -
+gh release create 2026.1.1.08 \
+  release/2026.1.1.08/fw-2026.1.1.08.bin \
+  release/2026.1.1.08/fs-2026.1.1.08.bin \
+  --title "v2026.1.1.08 - Title" --notes-file release_notes.md
 ```
 
 ## ✅ Pre-Deployment Checklist
@@ -329,5 +331,5 @@ printf '%s\n' '### Added' 'Feature list' | \
 
 ---
 
-**Version**: 2026.1.1.05 | **Last Updated**: Feb 6, 2026  
+**Version**: 2026.1.1.08 | **Last Updated**: Feb 6, 2026  
 **Status**: ✅ Ready for Deployment (pending testing on hardware)

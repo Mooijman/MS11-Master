@@ -3,8 +3,8 @@
 XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA pull updates, LittleFS storage, OLED display en web interface.
 
 **Status**: ✅ Geoptimaliseerd voor **XIAO ESP32-S3** (compact board, 8MB flash)  
-**Current Version**: `2026.1.1.05` (Timezone selection feature)  
-**Firmware Size**: 1.33MB (67.7% of OTA partition)  
+**Current Version**: `2026.1.1.08` (GPIO Viewer button alignment fix)  
+**Firmware Size**: 1.33MB (67.8% of OTA partition)  
 **Last Updated**: 6 februari 2026
 
 ## Migration Notes (ESP32-WROOM → ESP32-S3)
@@ -29,7 +29,7 @@ XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA 
 - **DHCP of Static IP** configuratie
 - **Persistent storage** in LittleFS met atomic writes
 - **GitHub OTA pull updates** - firmware en filesystem updates via GitHub Releases
-- **Version tracking** - fw-2026-1.0.00 en fs-2026-1.0.00 format
+- **Version tracking** - fw-2026.1.1.08 en fs-2026.1.1.08 format
 - **Web-based update interface** met status tracking
 - **GPIO Viewer** optioneel beschikbaar voor debugging
 - **OLED display** support (SSD1306)
@@ -46,11 +46,11 @@ XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA 
 - **Size**: Ultra-compact (21x17.5mm)
 - **USB**: USB-C @ 921600 baud
 - **Partitions**: Optimized for 8MB flash ([partitions_xiao_s3.csv](partitions_xiao_s3.csv))
-  - `nvs`: 0x9000 - 0xDFFF (20KB)
-  - `otadata`: 0xE000 - 0xEFFF (4KB)
-  - `app0` (OTA_0): 0x10000 - 0x1FFFFF (1.9MB)
-  - `app1` (OTA_1): 0x200000 - 0x3EFFFF (1.9MB)
-  - `littlefs`: 0x3F0000 - 0x3FFFFF (64KB)
+   - `nvs`: 0x9000 - 0xDFFF (20KB)
+   - `otadata`: 0xE000 - 0xEFFF (4KB)
+   - `app0` (OTA_0): 0x10000 - 0x1FFFFF (1.9MB)
+   - `app1` (OTA_1): 0x200000 - 0x3EFFFF (1.9MB)
+   - `littlefs`: 0x3D0000 - 0x44FFFF (512KB)
 - **Display**: SSD1306 OLED I2C (GPIO6=SDA, GPIO7=SCL)
 
 ### XIAO S3 Pin Layout
@@ -105,18 +105,17 @@ Het systeem kan automatisch firmware en filesystem updates downloaden van GitHub
 ### Versie Format
 
 Versies volgen het format: `type-year-major.minor.patch`
-- Firmware: `fw-2026-1.0.00`
-- Filesystem: `fs-2026-1.0.00`
+- Firmware: `fw-2026.1.1.08`
+- Filesystem: `fs-2026.1.1.08`
 
 ### GitHub Release Maken
 
-1. Ga naar: https://github.com/Mooijman/ESP32-baseline/releases/new
-2. **Voor firmware update:**
-   - Tag: `fw-2026-1.0.01` (of hogere versie)
-   - Upload binary als: `fw.bin`
-3. **Voor filesystem update:**
-   - Tag: `fs-2026-1.0.01`
-   - Upload binary als: `fs.bin`
+1. Ga naar: https://github.com/Mooijman/ESP32S3-Baseline/releases/new
+2. **Maak één release per versie** (tag zonder `v` prefix):
+   - Tag: `2026.1.1.08` (of hogere versie)
+3. **Upload binaries** met vaste naming:
+   - `fw-2026.1.1.08.bin`
+   - `fs-2026.1.1.08.bin`
 
 ### Binaries Genereren (XIAO ESP32-S3)
 
@@ -134,15 +133,15 @@ pio run -e esp32s3dev
 pio run -e esp32s3dev --target clean && pio run -e esp32s3dev
 
 # Binaries beschikbaar op:
-.pio/build/esp32s3dev/firmware.bin  # → fw-YYYY-M.m.p.bin
-.pio/build/esp32s3dev/littlefs.bin  # → fs-YYYY-M.m.p.bin
+.pio/build/esp32s3dev/firmware.bin  # → fw-YYYY.M.m.p.bin
+.pio/build/esp32s3dev/littlefs.bin  # → fs-YYYY.M.m.p.bin
 ```
 
 **XIAO S3 Upload Details**:
 - Auto-detection via USB-C (CDC)
 - Baud rate: 921600 (optimized for XIAO)
-- Partition layout: 1.9MB × 2 (dual OTA) + 64KB (LittleFS)
-- Flash usage: ~65% per partition (1.3MB firmware)
+- Partition layout: 1.9MB × 2 (dual OTA) + 512KB (LittleFS)
+- Flash usage: ~68% per partition (1.33MB firmware)
 
 ⚠️ **Let op**: 
 - Altijd firmware EN LittleFS samen uploaden na code changes!
@@ -173,7 +172,7 @@ Via Settings pagina:
 - **Open** knop - open Updates pagina (alleen als updates enabled)
 
 Update URL wordt automatisch ingesteld op:
-`https://api.github.com/repos/Mooijman/ESP32-baseline/releases/latest`
+`https://api.github.com/repos/Mooijman/ESP32S3-baseline/releases/latest`
 
 ### ArduinoOTA (lokaal)
 
@@ -182,6 +181,9 @@ Voor ontwikkeling kun je ook lokale OTA gebruiken:
 ```bash
 # Upload via IP adres
 pio run -t upload --upload-port <ip-adres>
+
+# Upload filesystem via IP adres
+pio run -t uploadfs --upload-port <ip-adres>
 
 # Upload via hostname
 pio run -t upload --upload-port ESP32-Base.local
@@ -247,8 +249,8 @@ Configuratie wordt opgeslagen in LittleFS met atomic writes:
 - `updateUrl=` - GitHub API URL voor releases
 
 **current.info** (versie tracking):
-- Regel 1: Firmware versie (fw-2026-1.0.00)
-- Regel 2: Filesystem versie (fs-2026-1.0.00)
+- Regel 1: Firmware versie (fw-2026.1.1.08)
+- Regel 2: Filesystem versie (fs-2026.1.1.08)
 
 **NVS storage** (OTA state):
 - Update info, download URLs, last check timestamp
@@ -287,8 +289,8 @@ Output toont:
 
 Platform: **PlatformIO**  
 Framework: **Arduino ESP32 v3.1.1**  
-Board: **esp32dev** (ESP32-D0WDQ6)  
-Partitions: **custom OTA (4MB)**
+Board: **seeed_xiao_esp32s3** (XIAO ESP32-S3)  
+Partitions: **partitions_xiao_s3.csv** (1.92MB × 2 OTA + 512KB LittleFS)
 
 ### Debug Levels
 
@@ -305,6 +307,14 @@ In platformio.ini:
 - LittleFS atomic writes voorkomen corruptie
 
 ## Recent Updates (February 2026)
+
+### v2026.1.1.08 - GPIO Viewer Button Alignment Fix
+- GPIO Viewer "Open" button aligned with other action buttons
+- Consistent layout using `form-group-checkbox-row`
+
+### v2026.1.1.07 - Settings UI Polish
+- CSS optimization and spacing refinements
+- Consistent button hover transitions
 
 ### v2026.1.1.05 - Timezone Selection
 - Timezone dropdown menu in settings.html

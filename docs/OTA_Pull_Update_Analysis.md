@@ -3,16 +3,16 @@
 ## 1. Huidige Situatie
 
 ### Hardware & Software
-- **ESP32-D0WDQ6** rev 1.0 (migratie naar ESP32-S3 gepland)
-- **Flash**: 4MB (standaard partition table)
+- **ESP32-S3** (Seeed XIAO ESP32-S3)
+- **Flash**: 8MB (custom partition table)
 - **Framework**: Arduino ESP32 v3.1.1
-- **Board**: esp32dev (future: ESP32-S3)
+- **Board**: seeed_xiao_esp32s3
 - **LittleFS**: Actief voor data storage
 
 ### Versie Naming Convention
-- **Firmware**: `fw-YYYY-MAJOR.MINOR.PATCH` (bijv. fw-2026-1.0.00)
-- **Filesystem**: `fs-YYYY-MAJOR.MINOR.PATCH` (bijv. fs-2026-1.0.00)
-- **Opslag**: Hardcoded in main.cpp + current.info in filesystem
+- **Firmware**: `fw-YYYY.M.m.pp` (bijv. fw-2026.1.1.08)
+- **Filesystem**: `fs-YYYY.M.m.pp` (bijv. fs-2026.1.1.08)
+- **Opslag**: Compile-time defines in `include/config.h` + NVS tracking
 
 ### Bestaande Functionaliteit
 - ArduinoOTA actief voor lokale OTA updates
@@ -118,10 +118,10 @@ monitor_speed = 115200
 
 ### 4.1 Versie Definities (VERPLICHT FORMAT)
 ```cpp
-// Toevoegen aan begin van main.cpp
+// Toevoegen aan include/config.h
 // Format: "type-year-major.minor.patch"
-#define FIRMWARE_VERSION "fw-2026-1.0.00"
-#define FILESYSTEM_VERSION "fs-2026-1.0.00"
+#define FIRMWARE_VERSION "fw-2026.1.1.08"
+#define FILESYSTEM_VERSION "fs-2026.1.1.08"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
@@ -133,8 +133,8 @@ String currentFilesystemVersion = FILESYSTEM_VERSION;
 ### 4.2 current.info Bestand
 Maak bestand in `data/current.info`:
 ```
-firmware=fw-2026-1.0.00
-filesystem=fs-2026-1.0.00
+firmware=fw-2026.1.1.08
+filesystem=fs-2026.1.1.08
 build_date=2026-02-01
 ```
 
@@ -146,8 +146,8 @@ Dit bestand wordt automatisch mee-geüpload met LittleFS en dient als reference.
 import datetime
 
 with open('data/current.info', 'w') as f:
-    f.write(f'firmware=fw-2026-1.0.00\n')
-    f.write(f'filesystem=fs-2026-1.0.00\n')
+    f.write(f'firmware=fw-2026.1.1.08\n')
+    f.write(f'filesystem=fs-2026.1.1.08\n')
     f.write(f'build_date={datetime.date.today()}\n')
 ```
 

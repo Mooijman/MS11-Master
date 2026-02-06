@@ -45,9 +45,9 @@ See [MIGRATION.md](MIGRATION.md) for complete porting details.
 
 ### Standard
 Bij het maken van een nieuwe GitHub release:
-- **Tag name**: `YYYY-M.0.NN` (bijvoorbeeld: `2026-1.0.07`) - **ZONDER `v` prefix**
+- **Tag name**: `YYYY.M.m.pp` (bijvoorbeeld: `2026.1.1.08`) - **ZONDER `v` prefix**
 - **Release title**: Beschrijving van de release
-- **Binary files**: `fw-YYYY-M.0.NN.bin` en `fs-YYYY-M.0.NN.bin`
+- **Binary files**: `fw-YYYY.M.m.pp.bin` en `fs-YYYY.M.m.pp.bin`
 
 ### Procedure (Automated via GitHub CLI)
 ```bash
@@ -72,21 +72,12 @@ git commit -m "vYYYY.M.m.pp: Release description"
 git tag YYYY.M.m.pp        # WITHOUT v prefix!
 git push && git push origin YYYY.M.m.pp
 
-# 6. Maak GitHub release via CLI
-printf '%s\n' \
-  '### Added' \
-  '- Feature 1' \
-  '- Feature 2' \
-  '' \
-  '### Technical Details' \
-  '- Firmware: X bytes (Y%% of 1.92MB OTA partition)' \
-  '- RAM: X bytes (Y%%)' \
-  '- Filesystem: 512KB' \
-| gh release create YYYY.M.m.pp \
+# 6. Maak GitHub release via CLI (notes via file om shell quoting issues te vermijden)
+gh release create YYYY.M.m.pp \
   release/YYYY.M.m.pp/fw-YYYY.M.m.pp.bin \
   release/YYYY.M.m.pp/fs-YYYY.M.m.pp.bin \
-  --title "YYYY.M.m.pp - Short description" \
-  --notes-file -
+  --title "vYYYY.M.m.pp - Short description" \
+  --notes-file release_notes.md
 ```
 
 **Voordelen GitHub CLI aanpak**:
@@ -106,15 +97,15 @@ printf '%s\n' \
 
 ### Standard
 Bij het maken van een nieuwe release moeten de binary files de volgende naming convention volgen:
-- **Firmware**: `fw-YYYY-M.0.NN.bin` (bijvoorbeeld: `fw-2026-1.0.07.bin`)
-- **Filesystem**: `fs-YYYY-M.0.NN.bin` (bijvoorbeeld: `fs-2026-1.0.07.bin`)
+- **Firmware**: `fw-YYYY.M.m.pp.bin` (bijvoorbeeld: `fw-2026.1.1.08.bin`)
+- **Filesystem**: `fs-YYYY.M.m.pp.bin` (bijvoorbeeld: `fs-2026.1.1.08.bin`)
 
 ### Procedure
 ```bash
 # Na compilatie, kopieer binaries naar release folder met correcte namen:
-mkdir -p release/YYYY-M.0.NN
-cp .pio/build/esp32dev/firmware.bin release/YYYY-M.0.NN/fw-YYYY-M.0.NN.bin
-cp .pio/build/esp32dev/littlefs.bin release/YYYY-M.0.NN/fs-YYYY-M.0.NN.bin
+mkdir -p release/YYYY.M.m.pp
+cp .pio/build/esp32s3dev/firmware.bin release/YYYY.M.m.pp/fw-YYYY.M.m.pp.bin
+cp .pio/build/esp32s3dev/littlefs.bin release/YYYY.M.m.pp/fs-YYYY.M.m.pp.bin
 ```
 
 **Reden**: Consistentie met bestaande releases en compatibility met update systeem dat `fw-` en `fs-` prefixes verwacht.
@@ -130,8 +121,8 @@ Versie nummers moesten handmatig worden bijgewerkt op meerdere plaatsen na firmw
 Geïmplementeerd in `readCurrentVersion()` (lines 163-202 in `src/main.cpp`):
 
 ```cpp
-#define FIRMWARE_VERSION "fw-2026-1.0.05"
-#define FILESYSTEM_VERSION "fs-2026-1.0.05"
+#define FIRMWARE_VERSION "fw-2026.1.1.08"
+#define FILESYSTEM_VERSION "fs-2026.1.1.08"
 ```
 
 **Mechanisme:**
@@ -308,8 +299,8 @@ Hard-coded versie nummers in HTML vervangen door generiek "YYYY-M.m.p" format.
 ## Release Binary Naming Convention
 
 ### Format
-- Firmware: `fw-YYYY-M.m.p.bin`
-- Filesystem: `fs-YYYY-M.m.p.bin`
+- Firmware: `fw-YYYY.M.m.pp.bin`
+- Filesystem: `fs-YYYY.M.m.pp.bin`
 
 ### Redenering
 - Prefix maakt type direct duidelijk
@@ -320,8 +311,8 @@ Hard-coded versie nummers in HTML vervangen door generiek "YYYY-M.m.p" format.
 ### Implementatie
 ```bash
 # In release directory
-mv firmware.bin fw-2026-1.0.05.bin
-mv littlefs.bin fs-2026-1.0.05.bin
+mv firmware.bin fw-2026.1.1.08.bin
+mv littlefs.bin fs-2026.1.1.08.bin
 ```
 
 ---
@@ -346,10 +337,10 @@ esptool.py --port /dev/cu.usbserial-0001 erase_flash
 
 ## Geheugen Management
 
-### Huidige Status (versie 2026-1.0.05)
-- **Firmware**: 1,330,952 bytes (67.7% van 4MB flash)
-- **RAM**: 53,856 bytes (16.4%)
-- **Filesystem**: 131,072 bytes (LittleFS)
+### Huidige Status (versie 2026.1.1.08)
+- **Firmware**: 1,333,968 bytes (67.8% van 1.92MB OTA partition)
+- **RAM**: 51,588 bytes (15.7%)
+- **Filesystem**: 512KB (LittleFS)
 
 ### Overwegingen
 - Flash gebruik is hoog maar acceptabel
@@ -362,7 +353,7 @@ esptool.py --port /dev/cu.usbserial-0001 erase_flash
 ## Development Workflow
 
 ### Version Update Proces
-1. Update `#define FIRMWARE_VERSION` en `FILESYSTEM_VERSION` in `src/main.cpp`
+1. Update `#define FIRMWARE_VERSION` en `FILESYSTEM_VERSION` in `include/config.h`
 2. Full flash erase: `esptool.py erase_flash`
 3. Upload firmware: `pio run -t upload`
 4. Upload filesystem: `pio run -t uploadfs`
@@ -387,10 +378,10 @@ esptool.py --port /dev/cu.usbserial-0001 erase_flash
 
 - **Chip**: ESP32-D0WDQ6 revision v1.0
 - **MAC Address**: 30:ae:a4:0f:2c:3c
-- **Flash**: 4MB
-- **Upload Port**: /dev/cu.usbserial-0001
-- **Baud Rate**: 460800
-- **OTA IP**: 172.17.1.159 (lokaal netwerk)
+- **Flash**: 8MB
+- **Upload Port**: USB-C CDC (auto-detect)
+- **Baud Rate**: 921600
+- **OTA IP**: 172.17.1.158 (lokaal netwerk)
 
 ---
 
@@ -420,5 +411,5 @@ esptool.py --port /dev/cu.usbserial-0001 erase_flash
 
 ---
 
-**Laatste update**: 2 februari 2026
-**Huidige versie**: 2026-1.0.05
+**Laatste update**: 6 februari 2026
+**Huidige versie**: 2026.1.1.08

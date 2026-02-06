@@ -47,8 +47,8 @@ pio run -e esp32dev -t uploadfs
 - [ ] OLED display toont IP adres
 - [ ] Serial output toont:
   - `OTA Update System Initialized`
-  - `Firmware Version: fw-2026-1.0.00`
-  - `Filesystem Version: fs-2026-1.0.00`
+  - `Firmware Version: fw-2026.1.1.08`
+  - `Filesystem Version: fs-2026.1.1.08`
 - [ ] Web interface bereikbaar op IP
 
 ## Fase 3: UI Testing
@@ -57,8 +57,8 @@ pio run -e esp32dev -t uploadfs
 Navigeer naar: `http://<IP>/update.html`
 
 - [ ] OTA sectie zichtbaar
-- [ ] Current firmware toont: `fw-2026-1.0.00`
-- [ ] Current filesystem toont: `fs-2026-1.0.00`
+- [ ] Current firmware toont: `fw-2026.1.1.08`
+- [ ] Current filesystem toont: `fs-2026.1.1.08`
 - [ ] Remote version toont: `-` (nog geen check)
 - [ ] Status toont: `Idle`
 - [ ] Check Nu knop zichtbaar
@@ -303,7 +303,7 @@ Document hier eventuele problemen:
 - [ ] Create GitHub Actions workflow voor automated releases
 - [ ] Documentatie updaten
 - [ ] HTTPS certificate pinning in productie
-- [ ] Version bump naar fw-2026-1.0.01 voor eerste test release
+- [ ] Version bump naar fw-2026.1.1.09 voor eerste test release
 
 ## GitHub Release Setup
 

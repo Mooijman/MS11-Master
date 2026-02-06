@@ -8,6 +8,12 @@ Deze sessie focuste op het documenteren van de codebase voor AI-agenten, het str
 
 ✅ **Alle doelstellingen afgerond**
 
+### Addendum (Late Session) - UI Fixes & Release 2026.1.1.08
+- **Settings page herstel**: CSP issues opgelost door ES5-conversie en expliciete CSP meta tag
+- **UI alignment fix**: GPIO Viewer "Open" knop nu rechts uitgelijnd zoals andere actieknoppen
+- **OTA workflow**: Firmware en filesystem succesvol via ArduinoOTA geüpload
+- **Releases**: 2026.1.1.07 (UI polish) en 2026.1.1.08 (alignment fix) gepubliceerd
+
 ### 1. AI Agent Documentation
 - **Bestand**: `.github/copilot-instructions.md` (nieuw)
 - **Inhoud**: 
@@ -88,6 +94,18 @@ if (storedKey != currentKey && lastSavedKey != currentKey) {
 - **Binaries**: fw-2026.1.1.05.bin, fs-2026.1.1.05.bin (512KB)
 - **Git Commit**: 18d2c84 - "v2026.1.1.05: Timezone selection for NTP sync"
 
+#### Release v2026.1.1.07 - Settings UI Polish
+- **Datum**: 6 februari 2026
+- **Features**: CSS optimalisatie, verbeterde UI spacing
+- **Firmware Size**: 1,333,968 bytes (67.8% flash)
+- **Binaries**: fw-2026.1.1.07.bin, fs-2026.1.1.07.bin (512KB)
+
+#### Release v2026.1.1.08 - GPIO Viewer Button Alignment Fix
+- **Datum**: 6 februari 2026
+- **Features**: GPIO Viewer "Open" knop rechts uitgelijnd
+- **Firmware Size**: 1,333,968 bytes (67.8% flash)
+- **Binaries**: fw-2026.1.1.08.bin, fs-2026.1.1.08.bin (512KB)
+
 **Release Workflow (Documented):**
 ```bash
 # 1. Build firmware en filesystem
@@ -107,12 +125,12 @@ git commit -m "vYYYY.M.m.pp: Description"
 git tag YYYY.M.m.pp
 git push && git push origin YYYY.M.m.pp
 
-# 5. GitHub CLI release (met printf | gh pattern voor safe quoting)
-printf '%s\n' '### Added' 'Feature description' | \
-  gh release create YYYY.M.m.pp \
-    release/YYYY.M.m.pp/fw-*.bin \
-    release/YYYY.M.m.pp/fs-*.bin \
-    --title "Title" --notes-file -
+# 5. GitHub CLI release (notes via file om shell quoting issues te vermijden)
+gh release create YYYY.M.m.pp \
+  release/YYYY.M.m.pp/fw-YYYY.M.m.pp.bin \
+  release/YYYY.M.m.pp/fs-YYYY.M.m.pp.bin \
+  --title "vYYYY.M.m.pp - Short description" \
+  --notes-file release_notes.md
 ```
 
 **Dokumentatie Locatie:**
@@ -128,8 +146,8 @@ printf '%s\n' '### Added' 'Feature description' | \
 
 ### Current Firmware Status
 ```
-Version: 2026.1.1.05
-Firmware: 1,330,848 bytes (67.7% van 1.92MB OTA partition)
+Version: 2026.1.1.08
+Firmware: 1,333,968 bytes (67.8% van 1.92MB OTA partition)
 RAM Usage: 51,588 bytes (15.7% van 320KB)
 Filesystem: 512KB LittleFS (116KB web files, 396KB free)
 Flash Utilization: 4.45MB van 8MB (55%)
@@ -252,9 +270,9 @@ NTP_ENABLED: true (NEW - time sync)
 - **Files Modified**: 9
 - **New Files**: 2 (copilot-instructions.md, SESSION_SUMMARY.md)
 - **Lines Added**: ~500 (across all files)
-- **Commits**: 2 major (v.04, v.05)
-- **Git Tags**: 2 (matching releases)
-- **GitHub Releases**: 2 (with binaries attached)
+- **Commits**: 4 major (v.04, v.05, v.07, v.08)
+- **Git Tags**: 4 (matching releases)
+- **GitHub Releases**: 4 (with binaries attached)
 
 ### Time Estimation
 - Analysis & Planning: ~20%
@@ -265,7 +283,7 @@ NTP_ENABLED: true (NEW - time sync)
 ## Continuation Guide for Next Session
 
 ### Immediate Next Steps
-1. **Deploy to Hardware**: Flash latest release (v2026.1.1.05) to XIAO ESP32-S3
+1. **Deploy to Hardware**: Flash latest release (v2026.1.1.08) to XIAO ESP32-S3
 2. **End-User Testing**: Verify all features in real WiFi environment
 3. **Settings Validation**: Test persistence across reboots
 
@@ -278,16 +296,18 @@ NTP_ENABLED: true (NEW - time sync)
 ### Repository State
 ```bash
 # Current HEAD
-commit 18d2c84e...
+commit e60f124...
 Author: User
 Date: 6 februari 2026
 
-    v2026.1.1.05: Timezone selection for NTP sync
+  Release 2026.1.1.08: GPIO Viewer button alignment fix
 
 # Tags available
 git tag -l | grep 2026.1.1
   2026.1.1.04
   2026.1.1.05
+  2026.1.1.07
+  2026.1.1.08
 
 # Release directory structure
 release/
@@ -297,13 +317,19 @@ release/
 ├── 2026.1.1.05/
 │   ├── fw-2026.1.1.05.bin (1.3M)
 │   └── fs-2026.1.1.05.bin (512K)
+├── 2026.1.1.07/
+│   ├── fw-2026.1.1.07.bin (1.3M)
+│   └── fs-2026.1.1.07.bin (512K)
+├── 2026.1.1.08/
+│   ├── fw-2026.1.1.08.bin (1.3M)
+│   └── fs-2026.1.1.08.bin (512K)
 ```
 
 ## Signoff
 
 **Session Date**: 6 februari 2026  
 **Project Status**: ✅ Feature complete, documented, released  
-**Firmware Version**: 2026.1.1.05  
+**Firmware Version**: 2026.1.1.08  
 **Ready for**: Production deployment with testing  
 
 ---

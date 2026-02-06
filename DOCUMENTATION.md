@@ -1,6 +1,6 @@
 # 📋 Documentation Index - ESP32S3-Base Project
 
-**Project Version**: 2026.1.1.05  
+**Project Version**: 2026.1.1.08  
 **Last Updated**: 6 February 2026  
 **Status**: ✅ Complete & Ready for Deployment
 
@@ -83,9 +83,10 @@
 
 ### 📊 Release & Testing
 - **[CHANGELOG.md](CHANGELOG.md)** - Release history
+  - v2026.1.1.08 - GPIO Viewer button alignment fix
+  - v2026.1.1.07 - Settings UI polish
   - v2026.1.1.05 - Timezone selection
   - v2026.1.1.04 - NTP time sync
-  - v2026.1.1.03 - LittleFS partition fixes
   - ... (complete version history)
 
 - **[docs/OTA_Testing_Checklist.md](docs/OTA_Testing_Checklist.md)** - OTA testing guide

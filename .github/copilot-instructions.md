@@ -2,7 +2,7 @@
 
 ## Quick Facts
 - **Hardware**: Seeed XIAO ESP32-S3 (8MB flash, 320KB RAM)
-- **Current Version**: 2026.1.1.05 (Timezone selection + NTP sync)
+- **Current Version**: 2026.1.1.08 (GPIO Viewer button alignment fix)
 - **Firmware Size**: ~1.33MB (67% of 1.92MB OTA partition)
 - **Status**: Production-ready with stable architecture
 

@@ -112,19 +112,19 @@ pio run -e esp32s3dev -t uploadfs
 
 ### To Release:
 1. Update version in `include/config.h`:
-   - `FIRMWARE_VERSION "fw-2026-1.0.15"`
-   - `FILESYSTEM_VERSION "fs-2026-1.0.15"`
+   - `FIRMWARE_VERSION "fw-2026.1.1.08"`
+   - `FILESYSTEM_VERSION "fs-2026.1.1.08"`
 2. Build binaries:
    ```bash
    pio run -e esp32s3dev
    ```
 3. Copy to release folder:
    ```bash
-   mkdir -p release/2026-1.0.15
-   cp .pio/build/esp32s3dev/firmware.bin release/2026-1.0.15/fw-2026-1.0.15.bin
-   cp .pio/build/esp32s3dev/littlefs.bin release/2026-1.0.15/fs-2026-1.0.15.bin
+   mkdir -p release/2026.1.1.08
+   cp .pio/build/esp32s3dev/firmware.bin release/2026.1.1.08/fw-2026.1.1.08.bin
+   cp .pio/build/esp32s3dev/littlefs.bin release/2026.1.1.08/fs-2026.1.1.08.bin
    ```
-4. Create GitHub release with tag `2026-1.0.15` (no `v` prefix)
+4. Create GitHub release with tag `2026.1.1.08` (no `v` prefix)
 5. Upload binaries to release
 
 ## Features Verified
