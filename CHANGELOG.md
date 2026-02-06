@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.08] - 2026-02-06
+
+### Fixed
+- **GPIO Viewer Button Alignment**: Fixed button alignment to match other action buttons
+  - Wrapped checkbox and button in `form-group-checkbox-row` div
+  - "Open" button now right-aligned like "Reset WiFi" and "Update" buttons
+  - Consistent layout across all checkbox rows with action buttons
+
+### Technical Details
+- HTML structure updated: GPIO Viewer checkbox now uses same pattern as DHCP checkbox
+- CSS classes: `form-group-checkbox-row` + `form-group-checkbox-left` for proper flexbox layout
+- No visual changes to other UI elements
+
 ## [2026.1.1.07] - 2026-02-06
 
 ### Changed
