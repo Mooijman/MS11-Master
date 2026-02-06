@@ -32,9 +32,31 @@ bool GitHubUpdater::compareVersions(String remoteVer, String currentVer) {
   if (current.startsWith("fw-")) current = current.substring(3);
   if (current.startsWith("fs-")) current = current.substring(3);
   
-  // Format: 2026-1.0.01 (NO v prefix)
-  // Simply compare strings (lexicographic comparison works for this format)
-  return remote > current;
+  // Normalize separators: support both 2026-1.1.00 and 2026.1.1.00
+  remote.replace('-', '.');
+  current.replace('-', '.');
+  
+  auto getPart = [](const String& ver, int index) -> int {
+    int start = 0;
+    for (int i = 0; i < index; i++) {
+      int dot = ver.indexOf('.', start);
+      if (dot < 0) return 0;
+      start = dot + 1;
+    }
+    int end = ver.indexOf('.', start);
+    if (end < 0) end = ver.length();
+    return ver.substring(start, end).toInt();
+  };
+  
+  // Compare numeric parts (YYYY.M.m.pp)
+  for (int i = 0; i < 4; i++) {
+    int r = getPart(remote, i);
+    int c = getPart(current, i);
+    if (r > c) return true;
+    if (r < c) return false;
+  }
+  
+  return false;
 }
 
 void GitHubUpdater::saveUpdateInfo() {
