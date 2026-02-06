@@ -32,31 +32,16 @@ bool GitHubUpdater::compareVersions(String remoteVer, String currentVer) {
   if (current.startsWith("fw-")) current = current.substring(3);
   if (current.startsWith("fs-")) current = current.substring(3);
   
-  // Normalize separators: support both 2026-1.1.00 and 2026.1.1.00
-  remote.replace('-', '.');
-  current.replace('-', '.');
-  
-  auto getPart = [](const String& ver, int index) -> int {
-    int start = 0;
-    for (int i = 0; i < index; i++) {
-      int dot = ver.indexOf('.', start);
-      if (dot < 0) return 0;
-      start = dot + 1;
-    }
-    int end = ver.indexOf('.', start);
-    if (end < 0) end = ver.length();
-    return ver.substring(start, end).toInt();
-  };
-  
-  // Compare numeric parts (YYYY.M.m.pp)
-  for (int i = 0; i < 4; i++) {
-    int r = getPart(remote, i);
-    int c = getPart(current, i);
-    if (r > c) return true;
-    if (r < c) return false;
-  }
-  
-  return false;
+  // Format: 2026.1.1.00 (dotted format only)
+  int r0 = 0, r1 = 0, r2 = 0, r3 = 0;
+  int c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+  if (sscanf(remote.c_str(), "%d.%d.%d.%d", &r0, &r1, &r2, &r3) != 4) return false;
+  if (sscanf(current.c_str(), "%d.%d.%d.%d", &c0, &c1, &c2, &c3) != 4) return false;
+
+  if (r0 != c0) return r0 > c0;
+  if (r1 != c1) return r1 > c1;
+  if (r2 != c2) return r2 > c2;
+  return r3 > c3;
 }
 
 void GitHubUpdater::saveUpdateInfo() {
