@@ -1,0 +1,65 @@
+BOOTLOADER DIAGNOSTICS
+======================
+
+FUSES: ✅ CORRECT
+  hfuse: 0xdc (BOOTRST enabled - bootloader is default)
+  lfuse: 0xc2 (8MHz internal RC oscillator)
+  efuse: 0xfd (2.7V BOD)
+
+BOOTLOADER: ✅ FLASHED
+  Size: 1.4 KB (1024 bytes)
+  Located: 0x7C00 (bootloader section)
+
+PROBLEM: No LED blink on reset
+  → Bootloader might be starting but without LED indication
+  → OR bootloader is jumping directly to app without activation
+
+POSSIBLE CAUSES:
+===============
+
+1. **Bootloader has no LED_SUPPORT enabled**
+   - Check if twiboot was compiled with -DLED_SUPPORT=1
+   - Current compilation might have had LED disabled
+
+2. **Bootloader code issue**
+   - main.c line 134: #if (LED_SUPPORT) 
+   - If disabled, no visual feedback
+   - Bootloader still active on I2C 0x29, just invisible
+
+3. **App area corrupted**
+   - If app flash is empty/invalid, bootloader might hang
+   - No LED = no clue it's running
+
+TEST PLAN:
+==========
+
+Method A: Check if bootloader is ACTUALLY running (0x29 detection)
+  1. Reset Pro Mini
+  2. IMMEDIATELY (within 500ms) open ESP32 I2C Scanner
+  3. Look for 0x29
+  4. If found → bootloader IS running! (just no LED feedback)
+  5. If not found → bootloader isn't starting at all
+
+Method B: Force LED support rebuild
+  If Method A fails (no 0x29 detection):
+  1. Edit main.c: #define LED_SUPPORT 1
+  2. Rebuild: make MCU=atmega328p
+  3. Reflash: make MCU=atmega328p AVRDUDE_PROG='-c usbtiny -P usb' install
+  4. Reset and look for LED blink on PB4 (Arduino D12)
+
+Method C: Check app flash area
+  1. Read entire flash again
+  2. Check bytes 0x0000-0x7BFF
+  3. If all 0xFF → app area is empty (normal on fresh board)
+  4. Bootloader will wait 1 second then jump to empty code (hangs?)
+
+IMMEDIATE ACTION:
+=================
+
+Do this NOW:
+1. Reset Pro Mini
+2. Within 500ms, check ESP32 I2C Scanner
+3. Report: Do you see 0x29 or not?
+
+This will tell us if bootloader is running silently (just no LED).
+

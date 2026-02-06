@@ -1,0 +1,65 @@
+ISP TINY CONNECTION TROUBLESHOOTING
+====================================
+
+Error: "initialization failed (rc = -1)"
+Result: ISP Tiny can't detect Pro Mini ATmega328P
+
+CRITICAL CHECKLIST
+==================
+
+1. GROUND CONNECTION (Most important!)
+   ISP Tiny GND pin ————→ Pro Mini GND
+
+2. VCC (Power Supply)
+   ISP Tiny VCC ————→ Pro Mini VCC (5V)
+
+3. MOSI (Data Out)
+   ISP Tiny MOSI ————→ Pro Mini D11 (ICSP pin 4)
+
+4. MISO (Data In)
+   ISP Tiny MISO ————→ Pro Mini D12 (ICSP pin 1)
+
+5. SCK (Clock)
+   ISP Tiny SCK ————→ Pro Mini D13 (ICSP pin 3)
+
+6. RESET (Reset Control)
+   ISP Tiny RST ————→ Pro Mini RST (ICSP pin 5)
+
+PRO MINI ICSP HEADER
+====================
+  1 (MISO)  ─────  3 (SCK)   ─────  5 (RST)
+  2 (VCC)   ─────  4 (MOSI)  ─────  6 (GND)
+
+ISP TINY TYPICAL PINOUT
+=======================
+  1: MISO
+  2: VCC
+  3: SCK
+  4: MOSI
+  5: RESET
+  6: GND
+
+HARDWARE DIAGNOSTICS
+====================
+
+Check these physically:
+- All 6 wires connected and tight
+- GND wire is not loose or broken
+- VCC wire provides 5V
+- No shorts between pins
+
+Check device power:
+- Pro Mini: RX LED should blink (powered)
+- ISP Tiny: LED should be lit (powered)
+
+Try these fixes:
+1. Disconnect all wires, reconnect carefully
+2. Start with GND first (always!)
+3. Use shorter, thicker wires if available
+4. Try different USB cable for ISP Tiny
+
+If still failing:
+- Run: avrdude -c usbtiny -P usb -p m328p -v
+- Look for "Device signature"
+- If "00 00 00" = connection problem
+- If "1E 95 0F" = detected OK, wiring is good

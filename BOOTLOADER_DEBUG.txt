@@ -1,0 +1,64 @@
+BOOTLOADER DEBUG - NEXT STEPS
+==============================
+
+PROBLEEM: Bootloader start niet op reset (geen LED activiteit)
+OORZAAK: Waarschijnlijk fuses niet correct ingesteld
+
+SITUATIE:
+- Bootloader is geflasht (avrdude verified)
+- Fuses zijn ingesteld (avrdude reported success)
+- Na reset: geen LED activiteit
+- ISP Tiny USB niet meer herkend
+
+MOGELIJKE OORZAKEN:
+==================
+
+1. HFUSE 0xdc niet werkelijk ingesteld
+   → Bootloader is niet default boot target
+   → Pro Mini boot gaat naar app flash (leeg/corrupt)
+
+2. Reset circuit probleem
+   → RST pin niet goed
+   → Bootloader start maar hangt
+
+3. Bootloader corrupt geflasht
+   → Verificatie false positive
+   → Flash data ongeldig
+
+DIAGNOSTIEK PLAN:
+=================
+
+Optie A: ISP Tiny USB terug werkend
+  - Ander USB kabel proberen?
+  - ISP Tiny USB reset? (disconnect 10 seconden)
+  - Ander USB poort op Mac?
+
+Optie B: Zonder ISP Tiny (als bootloader werkelijk inzit)
+  - Pro Mini heeft seriële bootloader?
+  - Kan je via USB TTL programmer bootloader checken?
+
+Optie C: Fresh start (zeker werken)
+  1. ISP Tiny USB werkend krijgen
+  2. Erase entire flash: avrdude ... -e (erase)
+  3. Fresh install bootloader
+  4. Fresh install fuses
+  5. Verify bootloader is running (LED check)
+  6. THEN disconnect ISP Tiny
+
+RECOMMENDATION:
+===============
+
+Laat ISP Tiny USB 10 seconden unplugged, reconnect.
+Test avrdude detectie opnieuw.
+
+Als werkend:
+  cd /tmp/twiboot_for_arduino
+  make MCU=atmega328p AVRDUDE_PROG='-c usbtiny -P usb' clean
+  make MCU=atmega328p AVRDUDE_PROG='-c usbtiny -P usb' install
+  make MCU=atmega328p AVRDUDE_PROG='-c usbtiny -P usb' fuses
+  
+Then test LED blink after reset.
+
+Laat me weten:
+- ISP Tiny USB terug werkend?
+- LED knippert nu na reset?

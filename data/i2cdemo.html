@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>I2C Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.png">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body class="card-layout">
+  <div class="topnav">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
+  </div>
+  <div class="content">
+    <div class="card-grid">
+      <div class="card">
+        <div class="header">
+          <h1><img src="hex100.png" alt="" class="icon-inline">i2c demo</h1>
+          <a href="/index.html" class="card-close">&times;</a>
+        </div>
+        <div class="padding-top-10">
+          <div class="margin-bottom-20">
+            <div class="form-actions-right" style="gap: 10px;">
+              <button class="btn-small" onclick="sendLedCommand('on')">LED aan</button>
+              <button class="btn-small" onclick="sendLedCommand('blink1')">Blink 1 Hz</button>
+              <button class="btn-small" onclick="sendLedCommand('blink4')">Blink 4 Hz</button>
+              <button class="btn-small" onclick="sendLedCommand('blink0')">Stop blink</button>
+            </div>
+          </div>
+
+          <div class="margin-bottom-20">
+            <p class="text-left text-muted line-height-16">LED status: <span id="led-status">-</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function sendLedCommand(action) {
+      fetch('/api/i2c/led', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=' + encodeURIComponent(action)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          if (data.statusText) {
+            document.getElementById('led-status').textContent = data.statusText;
+          }
+        } else if (data.error) {
+          alert(data.error);
+        }
+      })
+      .catch(() => alert('I2C commando mislukt'));
+    }
+  </script>
+</body>
+</html>

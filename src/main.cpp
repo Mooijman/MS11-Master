@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "github_updater.h"
 #include "wifi_manager.h"
+#include "twi_boot_updater.h"
 
 // Global instances
 Preferences preferences;
@@ -37,6 +38,9 @@ GitHubUpdater* githubUpdater = nullptr;
 // WiFi manager instance
 WiFiManager* wifiManager = nullptr;
 
+// Twiboot updater instance
+TwiBootUpdater* twibootUpdater = nullptr;
+
 // Create AsyncWebServer object
 AsyncWebServer server(WEB_SERVER_PORT);
 
@@ -47,6 +51,12 @@ DNSServer dnsServer;
 String cachedScanResults = "";
 unsigned long lastScanTime = 0;
 bool scanInProgress = false;
+
+// I2C LED demo constants
+static const uint8_t I2C_LED_ADDR = 0x30;
+static const uint8_t I2C_LED_REG_ONOFF = 0x10;
+static const uint8_t I2C_LED_REG_BLINK = 0x11;
+static const uint8_t I2C_LED_REG_STATUS = 0x20;
 
 // Compatibility layer - reference settings module variables
 // These allow existing code to work without changes
@@ -206,6 +216,9 @@ void setup() {
   // Initialize GitHub updater
   githubUpdater = new GitHubUpdater(preferences, display);
   githubUpdater->loadUpdateInfo();
+  
+  // Initialize Twiboot updater
+  twibootUpdater = new TwiBootUpdater();
   
   Serial.println("OTA Update System Initialized");
   Serial.println("Firmware Version: " + currentFirmwareVersion);
@@ -780,6 +793,104 @@ void setup() {
         return String();
       });
     });
+
+    // I2C demo page
+    server.on("/i2cdemo", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(LittleFS, "/i2cdemo.html", "text/html");
+    });
+    
+    // Twiboot update page
+    server.on("/twiboot", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(LittleFS, "/twiboot.html", "text/html");
+    });
+    
+    // API: Get Twiboot bootloader status
+    server.on("/api/twi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+      JsonDocument doc;
+      
+      // Query bootloader version
+      String version = "-";
+      uint8_t sig0 = 0, sig1 = 0, sig2 = 0;
+      
+      if (twibootUpdater) {
+        if (twibootUpdater->queryBootloaderVersion(version)) {
+          doc["connected"] = true;
+          doc["version"] = version;
+          
+          if (twibootUpdater->queryChipSignature(sig0, sig1, sig2)) {
+            char sigStr[20];
+            snprintf(sigStr, sizeof(sigStr), "%02X %02X %02X", sig0, sig1, sig2);
+            doc["signature"] = String(sigStr);
+          }
+        } else {
+          doc["connected"] = false;
+        }
+      } else {
+        doc["connected"] = false;
+      }
+      
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+    
+    // API: Upload hex file to bootloader
+    server.on("/api/twi/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+      Serial.println("[Twiboot API] Upload request received");
+      
+      if (!twibootUpdater) {
+        request->send(400, "application/json", "{\"success\":false,\"error\":\"Twiboot not initialized\"}");
+        return;
+      }
+      
+      // This will be handled by onBody
+      request->send(200, "application/json", "{\"success\":true,\"message\":\"Upload started\"}");
+    }, nullptr, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      // Parse JSON body with hex content
+      if (index == 0) {
+        // Parse JSON
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, (const char*)data);
+        
+        if (error) {
+          Serial.println("[Twiboot API] JSON parse error");
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+        
+        String hexContent = doc["hexContent"];
+        if (hexContent.length() == 0) {
+          Serial.println("[Twiboot API] Empty hex content");
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"No hex content\"}");
+          return;
+        }
+        
+        Serial.println("[Twiboot API] Hex content size: " + String(hexContent.length()) + " bytes");
+        
+        // Request bootloader mode
+        if (!twibootUpdater->requestBootloaderMode()) {
+          String error = twibootUpdater->getLastError();
+          Serial.println("[Twiboot API] Bootloader activation failed: " + error);
+          request->send(500, "application/json", 
+            "{\"success\":false,\"error\":\"" + error + "\"}");
+          return;
+        }
+        
+        Serial.println("[Twiboot API] Bootloader activated, uploading firmware...");
+        
+        // Upload hex file
+        if (!twibootUpdater->uploadHexFile(hexContent)) {
+          String error = twibootUpdater->getLastError();
+          Serial.println("[Twiboot API] Upload failed: " + error);
+          request->send(500, "application/json", 
+            "{\"success\":false,\"error\":\"" + error + "\"}");
+          return;
+        }
+        
+        Serial.println("[Twiboot API] Upload successful!");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Firmware updated\"}");
+      }
+    });
     
     // Confirmation page with auto-refresh
     server.on("/confirm.html", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -855,6 +966,104 @@ void setup() {
       
       doc["count"] = devices.size();
       
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+
+    // API: I2C LED control
+    server.on("/api/i2c/led", HTTP_POST, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+
+      if (!request->hasParam("action", true)) {
+        request->send(400, "application/json", "{\"error\":\"Missing action parameter\"}");
+        return;
+      }
+
+      String action = request->getParam("action", true)->value();
+      uint8_t reg = 0;
+      uint8_t value = 0;
+      String statusText = "";
+
+      if (action == "on") {
+        reg = I2C_LED_REG_ONOFF;
+        value = 1;
+        statusText = "aan";
+      } else if (action == "off") {
+        reg = I2C_LED_REG_ONOFF;
+        value = 0;
+        statusText = "uit";
+      } else if (action == "blink1") {
+        reg = I2C_LED_REG_BLINK;
+        value = 1;
+        statusText = "blink 1 Hz";
+      } else if (action == "blink4") {
+        reg = I2C_LED_REG_BLINK;
+        value = 2;
+        statusText = "blink 4 Hz";
+      } else if (action == "blink0") {
+        reg = I2C_LED_REG_BLINK;
+        value = 0;
+        statusText = "blink uit";
+      } else {
+        request->send(400, "application/json", "{\"error\":\"Invalid action\"}");
+        return;
+      }
+
+      Wire.beginTransmission(I2C_LED_ADDR);
+      Wire.write(reg);
+      Wire.write(value);
+      uint8_t error = Wire.endTransmission();
+
+      JsonDocument doc;
+      if (error == 0) {
+        doc["success"] = true;
+        doc["statusText"] = statusText;
+      } else {
+        doc["success"] = false;
+        doc["error"] = "I2C write failed";
+      }
+
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+
+    // API: I2C LED status
+    server.on("/api/i2c/led/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+
+      Wire.beginTransmission(I2C_LED_ADDR);
+      Wire.write(I2C_LED_REG_STATUS);
+      uint8_t error = Wire.endTransmission();
+
+      JsonDocument doc;
+      if (error == 0) {
+        Wire.requestFrom(I2C_LED_ADDR, (uint8_t)1);
+        if (Wire.available()) {
+          uint8_t status = Wire.read();
+          doc["success"] = true;
+          doc["status"] = status;
+          doc["statusText"] = status ? "aan" : "uit";
+        } else {
+          doc["success"] = false;
+          doc["error"] = "No data";
+        }
+      } else {
+        doc["success"] = false;
+        doc["error"] = "I2C write failed";
+      }
+
       String response;
       serializeJson(doc, response);
       request->send(200, "application/json", response);

@@ -1,0 +1,65 @@
+TWIBOOT BOOTRST ISSUE - TROUBLESHOOTING
+========================================
+
+FINDINGS:
+- Bootloader @ 0x7C00 ✓ (flashed, verified)
+- HFUSE 0xdc ✓ (BOOTRST enabled, confirmed 3x)
+- LED doesn't blink on power-on
+- App started immediately with minimal app (problem)
+- Now erased app - still no LED
+
+POSSIBLE ROOT CAUSES:
+====================
+
+1. **Pro Mini CLONE doesn't support BOOTRST properly**
+   - Many cheap clones have issues with bootloader fuses
+   - Solution: Verify bootloader works over I2C anyway
+   
+2. **Bootloader IS running but hangs silently**
+   - No app = jump to 0x0000 = empty code = hangs
+   - LED might not be initialized if something fails
+   - Solution: Put valid app back to test
+   
+3. **BOOTSZ fuse wrong**
+   - Current: BOOTSZ = 00 (512 words = 1024 bytes)
+   - Maybe clone needs different setting?
+   - Solution: Verify via avrdude output
+   
+4. **Bootloader has VIRTUAL_BOOT_SECTION=0 (wrong for this chip)**
+   - ATmega328P has real bootloader section (0x7C00)
+   - VIRTUAL_BOOT_SECTION should be 0 (correct)
+   - But maybe clone needs different approach?
+
+NEXT DIAGNOSTICS:
+=================
+
+Option A: Flash app back + test I2C
+  1. Put minimal_app back on
+  2. Within 1 second of reset, try I2C command to 0x29
+  3. If bootloader responds → it's running but hidden
+  4. If no response → bootloader not running at all
+
+Option B: Serial debugging (if available)
+  - Check if Pro Mini has TX/RX working
+  - Bootloader might output debug on serial
+
+Option C: Check if bootloader is jumping to wrong address
+  - Maybe BOOTRST doesn't map to 0x7C00 on this clone
+  - Try different bootloader
+
+Option D: Verify BOOTSZ fuse is correct
+  HFUSE 0xdc breakdown:
+  - Bit 7-3: [1,1,0,1,1] = misc
+  - Bit 2-1: [0,0] = BOOTSZ 512 words ← CORRECT
+  - Bit 0: [0] = BOOTRST enabled ← CORRECT
+
+IMMEDIATE ACTION:
+=================
+
+Flash app back on (minimal_app.hex), then test:
+1. Reset Pro Mini
+2. Quickly send I2C command to 0x29 (within 500ms)
+3. If 0x29 responds → bootloader IS running!
+4. If 0x29 doesn't respond → bootloader not accessible
+
+This will tell us if bootloader is active but just not showing LED.

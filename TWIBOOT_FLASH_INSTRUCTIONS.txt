@@ -1,0 +1,78 @@
+TWIBOOT INSTALLATION - PRO MINI + ISP TINY
+==========================================
+
+✅ BOOTLOADER BUILT
+   File: /tmp/twiboot_for_arduino/twiboot.hex
+   Size: 1.4 KB
+
+HARDWARE CONNECTIONS
+====================
+
+ISP Tiny → Pro Mini:
+  GND ————————→ GND (CRITICAL!)
+  VCC ————————→ VCC (5V)
+  SCK ————————→ D13
+  MOSI ───────→ D11
+  MISO ───────→ D12
+  RESET ──────→ RST
+
+FLASHING COMMANDS
+=================
+
+1. Navigate to bootloader directory:
+   cd /tmp/twiboot_for_arduino
+
+2. Flash bootloader:
+   make MCU=atmega328p AVRDUDE_PROG='-c usbtiny -P usb' install
+
+3. Set fuses:
+   make MCU=atmega328p AVRDUDE_PROG='-c usbtiny -P usb' fuses
+
+4. Power cycle Pro Mini
+
+VERIFICATION
+============
+
+1. Reset Pro Mini (press button)
+2. Go to ESP32: Settings → I2C Diagnostics → I2C Scanner
+3. Should see 0x29 (bootloader) within 1 second of reset
+4. Should see 0x30 (LED controller) after app boots
+
+FUSE SETTINGS
+=============
+
+Makefile will set:
+  - LFUSE: 0xc2 (8MHz internal RC oscillator)
+  - HFUSE: 0xdc (512-byte bootloader, BOOTRST enabled)
+  - EFUSE: 0xfd (2.7V BOD)
+
+These settings ensure bootloader runs for ~1 second on every reset.
+
+TROUBLESHOOTING
+===============
+
+No 0x29 on I2C scanner:
+  - Check GND connection (most critical!)
+  - Verify fuses were set correctly
+  - Try power cycle of Pro Mini
+  - Check I2C pull-ups on ESP32
+
+avrdude not found:
+  - Make sure avr-gcc toolchain is installed
+  - On Mac: brew install avr-gcc avrdude
+
+ISP Tiny not recognized:
+  - Check USB connection
+  - Try: lsusb (Mac: system_profiler SPUSBDataType)
+  - Verify avrdude supports usbtiny: avrdude -c usbtiny -P usb -p m328p -v
+
+NEXT STEPS
+==========
+
+After bootloader is flashed and verified:
+1. Create TwiBootUpdater class in ESP32 firmware
+2. Implement hex file upload web UI
+3. Test with sample hex file
+4. Version bump to 2026.1.1.10
+
+For details, see: docs/TWIBOOT_INTEGRATION.md
