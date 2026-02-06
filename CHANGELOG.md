@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.05] - 2026-02-06
+
+### Added
+- **Timezone Selection**: Dropdown menu for timezone configuration
+  - 15+ timezones (UTC, CET, EST, PST, etc.)
+  - Only visible when NTP sync is enabled
+  - Default: UTC
+  - Synced with system time when NTP is active
+
+### Changed
+- **Settings UI**: Improved layout with timezone field aligned right of NTP checkbox
+  - Responsive design: timezone field appears/disappears based on NTP toggle
+  - Clean form grouping with consistent styling
+
+### Technical Details
+- Firmware: 1,330,848 bytes (67.7% of 1.92MB OTA partition)
+- RAM: 51,588 bytes (15.7%)
+- Filesystem: 512KB
+- NVS key: `timezone` persists across reboots
+
 ## [2026.1.1.04] - 2026-02-06
 
 ### Added

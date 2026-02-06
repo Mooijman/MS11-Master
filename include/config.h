@@ -32,8 +32,8 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026.1.1.04"
-#define FILESYSTEM_VERSION "fs-2026.1.1.04"
+#define FIRMWARE_VERSION "fw-2026.1.1.05"
+#define FILESYSTEM_VERSION "fs-2026.1.1.05"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
@@ -112,6 +112,7 @@
 #define DEFAULT_UPDATES_ENABLED false
 #define DEFAULT_DHCP_ENABLED true
 #define DEFAULT_NTP_ENABLED true
+#define DEFAULT_TIMEZONE "UTC"
 
 // Default network settings
 #define DEFAULT_NETMASK "255.255.255.0"
@@ -163,6 +164,7 @@
 #define PARAM_UPDATE_URL "updateUrl"
 #define PARAM_GITHUB_TOKEN "githubToken"
 #define PARAM_NTP "ntp"
+#define PARAM_TIMEZONE "timezone"
 
 // Update parameters
 #define PARAM_UPDATE_TYPE "type"
@@ -225,6 +227,7 @@
 #define TEMPLATE_OTA_CHECKED "%OTA_CHECKED%"
 #define TEMPLATE_UPDATES_CHECKED "%UPDATES_CHECKED%"
 #define TEMPLATE_NTP_CHECKED "%NTP_CHECKED%"
+#define TEMPLATE_TIMEZONE "%TIMEZONE%"
 #define TEMPLATE_UPDATE_URL "%UPDATE_URL%"
 #define TEMPLATE_GITHUB_TOKEN "%GITHUB_TOKEN%"
 

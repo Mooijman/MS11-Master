@@ -39,6 +39,7 @@ public:
 
     // Time sync
     String ntpEnabled;
+    String timezone;
     
     // Version tracking
     String firmwareVersion;

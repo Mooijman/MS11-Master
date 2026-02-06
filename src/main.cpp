@@ -63,6 +63,7 @@ String& otaEnabled = settings.otaEnabled;
 String& updatesEnabled = settings.updatesEnabled;
 String& updateUrl = settings.updateUrl;
 String& ntpEnabled = settings.ntpEnabled;
+String& timezone = settings.timezone;
 
 // Version tracking aliases
 String& currentFirmwareVersion = settings.firmwareVersion;
@@ -307,6 +308,9 @@ void setup() {
         if (var == "NTP_CHECKED") {
           return ntpEnabledBool ? "checked" : "";
         }
+        if (var == "TIMEZONE") {
+          return timezone;
+        }
         if (var == "UPDATES_DISPLAY") {
           return updatesEnabledBool ? "style=\"display: flex;\"" : "style=\"display: none;\"";
         }
@@ -534,6 +538,17 @@ void setup() {
           ntpEnabled = "off";
           configChanged = true;
           Serial.println("NTP sync disabled");
+        }
+      }
+      
+      // Timezone
+      if (request->hasParam("timezone", true)) {
+        String newTz = request->getParam("timezone", true)->value();
+        newTz.trim();
+        if (newTz != timezone) {
+          timezone = newTz;
+          configChanged = true;
+          Serial.println("Timezone changed to: " + timezone);
         }
       }
       

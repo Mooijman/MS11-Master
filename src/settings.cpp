@@ -13,6 +13,7 @@ Settings::Settings() {
     updatesEnabled = boolToString(DEFAULT_UPDATES_ENABLED);
     updateUrl = DEFAULT_UPDATE_URL;
     ntpEnabled = boolToString(DEFAULT_NTP_ENABLED);
+    timezone = DEFAULT_TIMEZONE;
 }
 
 // Initialize NVS with default values on first boot
@@ -37,6 +38,7 @@ void Settings::initialize() {
     preferences.putString("dhcp", boolToString(DEFAULT_DHCP_ENABLED));
     preferences.putString("netmask", DEFAULT_NETMASK);
     preferences.putString("ntp", boolToString(DEFAULT_NTP_ENABLED));
+    preferences.putString("timezone", DEFAULT_TIMEZONE);
     
     // OTA defaults
     preferences.putString("updateUrl", DEFAULT_UPDATE_URL);
@@ -77,6 +79,7 @@ void Settings::load() {
     otaEnabled = preferences.getString("ota", boolToString(DEFAULT_OTA_ENABLED));
     updatesEnabled = preferences.getString("updates", boolToString(DEFAULT_UPDATES_ENABLED));
     ntpEnabled = preferences.getString("ntp", boolToString(DEFAULT_NTP_ENABLED));
+    timezone = preferences.getString("timezone", DEFAULT_TIMEZONE);
     
     // OTA settings
     updateUrl = preferences.getString("updateUrl", DEFAULT_UPDATE_URL);
@@ -109,6 +112,7 @@ void Settings::save() {
     preferences.putString("ota", otaEnabled);
     preferences.putString("updates", updatesEnabled);
     preferences.putString("ntp", ntpEnabled);
+    preferences.putString("timezone", timezone);
     
     // OTA settings
     preferences.putString("updateUrl", updateUrl);
@@ -144,6 +148,7 @@ void Settings::saveFeatures() {
     preferences.putString("ota", otaEnabled);
     preferences.putString("updates", updatesEnabled);
     preferences.putString("ntp", ntpEnabled);
+    preferences.putString("timezone", timezone);
     preferences.putString("updateUrl", updateUrl);
     preferences.putString("githubToken", githubToken);
     preferences.end();
@@ -249,6 +254,7 @@ void Settings::print() {
     Serial.println(String("    Token: ") + (githubToken.length() > 0 ? "***" : "(not set)"));
     Serial.println("  Time:");
     Serial.println("    NTP: " + ntpEnabled);
+    Serial.println("    Timezone: " + timezone);
     Serial.println("  Versions:");
     Serial.println("    Firmware: " + firmwareVersion);
     Serial.println("    Filesystem: " + filesystemVersion);
