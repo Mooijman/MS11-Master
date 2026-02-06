@@ -390,7 +390,11 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   
   updateInfo.state = UPDATE_INSTALLING;
   
+  #ifdef U_LITTLEFS
+  if (!Update.begin(contentLength, U_LITTLEFS)) {
+  #else
   if (!Update.begin(contentLength, U_SPIFFS)) {
+  #endif
     Serial.println("LittleFS Update.begin failed: " + String(Update.errorString()));
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "LFS " + String(Update.errorString());
