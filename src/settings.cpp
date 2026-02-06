@@ -281,6 +281,11 @@ Settings::StoredDate Settings::getStoredDate() {
 }
 
 void Settings::saveStoredDateIfNeeded(int year, int month, int day) {
+    // Only save if NTP is enabled
+    if (!stringToBool(ntpEnabled)) {
+        return;
+    }
+    
     if (year <= 1970 || month < 1 || month > 12 || day < 1 || day > 31) {
         return;
     }
@@ -314,4 +319,53 @@ String Settings::getCompiledFirmwareVersion() {
 String Settings::getCompiledFilesystemVersion() {
     String ver = String(FILESYSTEM_VERSION);
     return ver.substring(3);  // Remove "fs-" prefix
+}
+
+// Boot time helpers (debug mode)
+Settings::BootTime Settings::getLastBootTime() {
+    BootTime result{0, 0, 0, 0, 0, 0, 0, false};
+    preferences.begin(NVS_NAMESPACE_CONFIG, true);
+    int year = preferences.getInt("bootY", 0);
+    int month = preferences.getInt("bootM", 0);
+    int day = preferences.getInt("bootD", 0);
+    int hour = preferences.getInt("bootH", 0);
+    int minute = preferences.getInt("bootMI", 0);
+    int second = preferences.getInt("bootS", 0);
+    int tzOffset = preferences.getInt("bootTz", 0);
+    preferences.end();
+
+    if (year > 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        result.year = year;
+        result.month = month;
+        result.day = day;
+        result.hour = hour;
+        result.minute = minute;
+        result.second = second;
+        result.timezoneOffsetHours = tzOffset;
+        result.valid = true;
+    }
+
+    return result;
+}
+
+void Settings::saveBootTime(int year, int month, int day, int hour, int minute, int second, int timezoneOffsetHours) {
+    // Only save if debug is enabled
+    if (!stringToBool(debugEnabled)) {
+        return;
+    }
+    
+    if (year <= 1970 || month < 1 || month > 12 || day < 1 || day > 31 ||
+        hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+        return;
+    }
+
+    preferences.begin(NVS_NAMESPACE_CONFIG, false);
+    preferences.putInt("bootY", year);
+    preferences.putInt("bootM", month);
+    preferences.putInt("bootD", day);
+    preferences.putInt("bootH", hour);
+    preferences.putInt("bootMI", minute);
+    preferences.putInt("bootS", second);
+    preferences.putInt("bootTz", timezoneOffsetHours);
+    preferences.end();
 }

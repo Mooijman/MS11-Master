@@ -34,11 +34,11 @@
   --color-bg-warning: #fff3cd;
   --color-bg-card: white;
   
-  --spacing-xs: 4px;
-  --spacing-sm: 6px;
-  --spacing-md: 8px;
-  --spacing-lg: 10px;
-  --spacing-xl: 12px;
+  --spacing-xs: 2px;
+  --spacing-sm: 3px;
+  --spacing-md: 4px;
+  --spacing-lg: 5px;
+  --spacing-xl: 8px;
   --spacing-2xl: 15px;
   --spacing-3xl: 20px;
   
@@ -725,13 +725,9 @@ a#gpioViewerBtn:hover {
 
 .horizontal-divider,
 .hr-divider {
-  margin: var(--spacing-2xl) 0;
+  margin: var(--spacing-3xl) 0;
   border: 0;
   border-top: 1px solid var(--color-neutral-gray-very-pale);
-}
-
-.hr-divider {
-  margin: var(--spacing-lg) 0;
 }
 
 .flex-row {
@@ -862,11 +858,15 @@ a#gpioViewerBtn:hover {
   display: flex;
   align-items: center;
   margin-bottom: var(--spacing-lg);
+  gap: var(--spacing-lg);
 }
 
 .form-group-label {
-  width: 120px;
+  width: 140px;
+  min-width: 140px;
   margin: 0;
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .form-group-input {
@@ -885,7 +885,7 @@ a#gpioViewerBtn:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--spacing-3xl);
 }
 
 .form-group-checkbox-left {
@@ -895,6 +895,27 @@ a#gpioViewerBtn:hover {
 .form-group-checkbox-simple {
   margin-bottom: var(--spacing-lg);
   text-align: left;
+}
+
+#ntp-checkbox-row {
+  margin-bottom: var(--spacing-md);
+}
+
+#ntp-times-group {
+  margin-bottom: var(--spacing-3xl);
+}
+
+#github-update-checkbox-row {
+  margin-bottom: var(--spacing-md);
+}
+
+#updateurl-group {
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+#githubtoken-group {
+  margin-bottom: var(--spacing-lg);
 }
 
 .form-actions-right {

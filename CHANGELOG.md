@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.06] - 2026-02-06
+
+### Changed
+- **Settings UI Spacing Improvements**: Complete visual refinement of settings page layout
+  - Reduced spacing between "Enable NTP sync" checkbox and time fields (better visual grouping)
+  - Reduced spacing between "Enable GitHub Update" checkbox and URL/Token fields (tighter integration)
+  - Increased HR divider spacing from 15px to 20px for better section separation
+  - Added targeted CSS IDs: `#ntp-checkbox-row`, `#github-update-checkbox-row` for precise control
+  - Created logical visual hierarchy: related fields grouped closely, sections clearly separated
+
+### Technical Details
+- CSS: Refined spacing using CSS custom properties (--spacing-md, --spacing-3xl)
+- HTML: Added semantic IDs for targeted styling without affecting other checkboxes
+- Improved maintainability: Removed conflicting CSS rules that were overriding intended spacing
+
 ## [2026.1.1.05] - 2026-02-06
 
 ### Added

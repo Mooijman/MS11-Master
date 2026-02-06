@@ -41,6 +41,18 @@ public:
     String ntpEnabled;
     String timezone;
     
+    // Boot time tracking (debug only)
+    struct BootTime {
+        int year;
+        int month;
+        int day;
+        int hour;
+        int minute;
+        int second;
+        int timezoneOffsetHours;
+        bool valid;
+    };
+    
     // Version tracking
     String firmwareVersion;
     String filesystemVersion;
@@ -90,6 +102,10 @@ public:
     // Stored date helpers (NTP fallback)
     StoredDate getStoredDate();
     void saveStoredDateIfNeeded(int year, int month, int day);
+
+    // Boot time helpers (debug mode)
+    BootTime getLastBootTime();
+    void saveBootTime(int year, int month, int day, int hour, int minute, int second, int timezoneOffsetHours);
 
 private:
     Preferences preferences;

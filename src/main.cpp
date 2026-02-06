@@ -115,7 +115,7 @@ String jsonEscape(String str) {
 }
 
 // NTP time sync (UTC)
-void syncTimeIfEnabled() {
+void syncTimeIfEnabled(bool isBootSync = false) {
   if (!Settings::stringToBool(ntpEnabled)) {
     Serial.println("NTP sync disabled");
     return;
@@ -136,6 +136,21 @@ void syncTimeIfEnabled() {
     struct tm timeinfo;
     gmtime_r(&now, &timeinfo);
     settings.saveStoredDateIfNeeded(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+    
+    // Only save boot time on the first sync after boot (not on later settings updates)
+    if (isBootSync) {
+      // Parse timezone offset for boot time storage
+      int timezoneOffsetHours = 0;
+      if (timezone.startsWith("UTC+")) {
+        timezoneOffsetHours = timezone.substring(4).toInt();
+      } else if (timezone.startsWith("UTC-")) {
+        timezoneOffsetHours = -timezone.substring(4).toInt();
+      }
+      
+      // Save boot time if debug enabled (with timezone offset at time of sync)
+      settings.saveBootTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, timezoneOffsetHours);
+    }
   } else {
     Serial.println("NTP sync timeout");
     Settings::StoredDate stored = settings.getStoredDate();
@@ -230,7 +245,7 @@ void setup() {
     ipDisplayCleared = false;
 
     // Sync time if enabled
-    syncTimeIfEnabled();
+    syncTimeIfEnabled(true);  // true = boot sync, saves boot time
     
     // Initialize GPIO Viewer if enabled
     if (gpioViewerEnabled == "true" || gpioViewerEnabled == "on") {
@@ -258,7 +273,50 @@ void setup() {
       bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
       bool ntpEnabledBool = (ntpEnabled == "true" || ntpEnabled == "on");
       
-      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool, ntpEnabledBool](const String& var) -> String {
+      // Parse timezone offset from string (e.g., "UTC+2" -> +2 hours)
+      int timezoneOffsetHours = 0;
+      if (timezone.startsWith("UTC+")) {
+        timezoneOffsetHours = timezone.substring(4).toInt();
+      } else if (timezone.startsWith("UTC-")) {
+        timezoneOffsetHours = -timezone.substring(4).toInt();
+      }
+      
+      // Get current time and apply timezone offset
+      time_t now = time(nullptr);
+      time_t serverTimeWithOffset = now + (timezoneOffsetHours * 3600);  // For display
+      struct tm timeinfo;
+      gmtime_r(&serverTimeWithOffset, &timeinfo);
+      char currentDateTime[30];
+      snprintf(currentDateTime, sizeof(currentDateTime), "%04d-%02d-%02d %02d:%02d:%02d",
+               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      
+      // Convert to milliseconds for JavaScript (live clock on client side)
+      String serverTimeMs = String((long long)serverTimeWithOffset * 1000);
+      
+      String lastBootDisplay = "-";
+      Settings::BootTime lastBoot = settings.getLastBootTime();
+      if (lastBoot.valid) {
+        // Use the timezone offset that was stored at boot time, not current setting
+        struct tm bootTm = {};
+        bootTm.tm_year = lastBoot.year - 1900;
+        bootTm.tm_mon = lastBoot.month - 1;
+        bootTm.tm_mday = lastBoot.day;
+        bootTm.tm_hour = lastBoot.hour;
+        bootTm.tm_min = lastBoot.minute;
+        bootTm.tm_sec = lastBoot.second;
+        bootTm.tm_isdst = -1;
+        time_t bootTime = mktime(&bootTm);
+        bootTime += (lastBoot.timezoneOffsetHours * 3600);  // Use stored timezone offset
+        struct tm* bootInfo = gmtime(&bootTime);
+        char lastBootStr[30];
+        snprintf(lastBootStr, sizeof(lastBootStr), "%04d-%02d-%02d %02d:%02d:%02d",
+                 bootInfo->tm_year + 1900, bootInfo->tm_mon + 1, bootInfo->tm_mday,
+                 bootInfo->tm_hour, bootInfo->tm_min, bootInfo->tm_sec);
+        lastBootDisplay = String(lastBootStr);
+      }
+      
+      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool, ntpEnabledBool, currentDateTime, lastBootDisplay, serverTimeMs](const String& var) -> String {
         if (var == "SSID") {
           return ssid;
         }
@@ -308,8 +366,53 @@ void setup() {
         if (var == "NTP_CHECKED") {
           return ntpEnabledBool ? "checked" : "";
         }
+        if (var == "TIMEZONE_GROUP_DISPLAY") {
+          return ntpEnabledBool ? "" : "style=\"display: none;\"";
+        }
+        if (var == "NTP_TIMES_DISPLAY") {
+          return ntpEnabledBool ? "style=\"margin-top: 10px;\"" : "style=\"margin-top: 10px; display: none;\"";
+        }
         if (var == "TIMEZONE") {
           return timezone;
+        }
+        if (var == "TIMEZONE_UTC0") {
+          return (timezone == "UTC+0") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC1") {
+          return (timezone == "UTC+1") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC2") {
+          return (timezone == "UTC+2") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC3") {
+          return (timezone == "UTC+3") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC4") {
+          return (timezone == "UTC+4") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC5") {
+          return (timezone == "UTC+5") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC6") {
+          return (timezone == "UTC+6") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC7") {
+          return (timezone == "UTC+7") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC8") {
+          return (timezone == "UTC+8") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC9") {
+          return (timezone == "UTC+9") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC10") {
+          return (timezone == "UTC+10") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC11") {
+          return (timezone == "UTC+11") ? "selected" : "";
+        }
+        if (var == "TIMEZONE_UTC12") {
+          return (timezone == "UTC+12") ? "selected" : "";
         }
         if (var == "UPDATES_DISPLAY") {
           return updatesEnabledBool ? "style=\"display: flex;\"" : "style=\"display: none;\"";
@@ -328,6 +431,15 @@ void setup() {
         }
         if (var == "FILE_MANAGER_VISIBILITY") {
           return debugEnabledBool ? "style=\"visibility: visible;\"" : "style=\"visibility: hidden;\"";
+        }
+        if (var == "CURRENT_DATETIME") {
+          return String(currentDateTime);
+        }
+        if (var == "SERVER_TIME_MS") {
+          return serverTimeMs;
+        }
+        if (var == "LAST_BOOT_TIME") {
+          return lastBootDisplay;
         }
         return String();
       });
@@ -578,7 +690,7 @@ void setup() {
       if (configChanged) {
         settings.save();
         if (!shouldReboot) {
-          syncTimeIfEnabled();
+          syncTimeIfEnabled(false);  // false = not boot sync, don't save boot time
         }
       }
       

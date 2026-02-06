@@ -24,9 +24,36 @@
       }
     }
     function toggleNtpFields() {
-      const ntpChecked = document.getElementById('ntp').checked;
-      const tzGroup = document.getElementById('timezone-group');
-      tzGroup.style.display = ntpChecked ? 'flex' : 'none';
+      // Note: Both timezone and ntp-times-group visibility are controlled by server-side
+      // %TIMEZONE_GROUP_DISPLAY% and %NTP_TIMES_DISPLAY% template variables
+      // and only update after Save Settings
+    }
+    
+    // Live clock for current date/time
+    function updateCurrentDateTime() {
+      const display = document.getElementById('current-datetime-display');
+      if (!display) return;
+      
+      // Get the server time offset stored in the data attribute
+      const serverTime = parseInt(display.getAttribute('data-server-time'));
+      if (!serverTime) return;
+      
+      // Calculate elapsed time since page load
+      const clientTime = Date.now();
+      const elapsed = clientTime - display.getAttribute('data-load-time');
+      
+      // Calculate current time with server offset
+      const currentTime = new Date(serverTime + elapsed);
+      
+      // Format as YYYY-MM-DD HH:MM:SS
+      const year = currentTime.getUTCFullYear();
+      const month = String(currentTime.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(currentTime.getUTCDate()).padStart(2, '0');
+      const hours = String(currentTime.getUTCHours()).padStart(2, '0');
+      const minutes = String(currentTime.getUTCMinutes()).padStart(2, '0');
+      const seconds = String(currentTime.getUTCSeconds()).padStart(2, '0');
+      
+      display.value = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
     function resetWiFi() {
       if (confirm('Reset WiFi settings? Device will reboot into AP mode.')) {
@@ -42,6 +69,18 @@
       toggleNtpFields();
       document.getElementById('dhcp').addEventListener('change', toggleNetworkFields);
       document.getElementById('ntp').addEventListener('change', toggleNtpFields);
+      
+      // Initialize live clock for current date/time
+      const display = document.getElementById('current-datetime-display');
+      if (display) {
+        const now = Date.now();
+        // Store the page load time and server time for calculations
+        display.setAttribute('data-load-time', now);
+        // Initial update
+        updateCurrentDateTime();
+        // Update every 1 second
+        setInterval(updateCurrentDateTime, 1000);
+      }
     }
   </script>
 </head>
@@ -93,69 +132,50 @@
             </div>
           </div>
           
-          <div class="form-group-checkbox-simple">
-            <input type="checkbox" id="debug" name="debug" value="on" %DEBUG_CHECKED% class="checkbox-inline">
-            <label for="debug" class="label-inline">Enable Debug options</label>
-          </div>
-          
-          <div id="debug-fields" %DEBUG_DISPLAY%>
-            <div class="form-group-row">
-              <label for="fw_version" class="form-group-label">FW Version</label>
-              <input type="text" id="fw_version" name="fw_version" value="%FW_VERSION%" placeholder="YYYY-M.m.p" class="form-group-input">
-            </div>
-            
-            <div class="form-group-row">
-              <label for="fs_version" class="form-group-label">FS Version</label>
-              <input type="text" id="fs_version" name="fs_version" value="%FS_VERSION%" placeholder="YYYY-M.m.p" class="form-group-input">
-            </div>
-            
-            <div class="form-group-checkbox-row">
-              <div class="form-group-checkbox-left">
-                <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% class="checkbox-inline">
-                <label for="gpioviewer" class="label-inline">Enable GPIO Viewer</label>
-              </div>
-              %GPIOVIEWER_BUTTON%
-            </div>
-            
-            <div class="form-group-checkbox-simple">
-              <input type="checkbox" id="ota" name="ota" value="on" %OTA_CHECKED% class="checkbox-inline">
-              <label for="ota" class="label-inline">Enable OTA Update</label>
+          <div class="form-group-checkbox-row" id="ntp-checkbox-row">
+            <div class="form-group-checkbox-left">
+              <input type="checkbox" id="ntp" name="ntp" value="on" %NTP_CHECKED% class="checkbox-inline">
+              <label for="ntp" class="label-inline">Enable NTP sync</label>
             </div>
           </div>
           
-          <div class="form-group-checkbox-row">
+          <div id="ntp-times-group" %NTP_TIMES_DISPLAY%>
+            <div class="form-group-row">
+              <label for="last_boot" class="form-group-label">Last Boot</label>
+              <input type="text" id="last_boot" value="%LAST_BOOT_TIME%" readonly class="form-group-input" style="background-color: #f5f5f5; cursor: default;">
+            </div>
+            
+            <div class="form-group-row">
+              <label for="current_datetime" class="form-group-label">Current Date/Time</label>
+              <input type="text" id="current-datetime-display" value="%CURRENT_DATETIME%" data-server-time="%SERVER_TIME_MS%" readonly class="form-group-input" style="background-color: #f5f5f5; cursor: default;">
+            </div>
+            
+            <div class="form-group-row">
+              <label for="timezone" class="form-group-label">Timezone</label>
+              <select id="timezone" name="timezone" class="form-group-input" style="padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer;">
+                <option value="UTC+0" %TIMEZONE_UTC0%>UTC+0</option>
+                <option value="UTC+1" %TIMEZONE_UTC1%>UTC+1</option>
+                <option value="UTC+2" %TIMEZONE_UTC2%>UTC+2</option>
+                <option value="UTC+3" %TIMEZONE_UTC3%>UTC+3</option>
+                <option value="UTC+4" %TIMEZONE_UTC4%>UTC+4</option>
+                <option value="UTC+5" %TIMEZONE_UTC5%>UTC+5</option>
+                <option value="UTC+6" %TIMEZONE_UTC6%>UTC+6</option>
+                <option value="UTC+7" %TIMEZONE_UTC7%>UTC+7</option>
+                <option value="UTC+8" %TIMEZONE_UTC8%>UTC+8</option>
+                <option value="UTC+9" %TIMEZONE_UTC9%>UTC+9</option>
+                <option value="UTC+10" %TIMEZONE_UTC10%>UTC+10</option>
+                <option value="UTC+11" %TIMEZONE_UTC11%>UTC+11</option>
+                <option value="UTC+12" %TIMEZONE_UTC12%>UTC+12</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-group-checkbox-row" id="github-update-checkbox-row">
             <div class="form-group-checkbox-left">
               <input type="checkbox" id="updates" name="updates" value="on" %UPDATES_CHECKED% class="checkbox-inline">
               <label for="updates" class="label-inline">Enable GitHub Update</label>
             </div>
             %UPDATES_BUTTON%
-          </div>
-
-          <div class="form-group-checkbox-row">
-            <div class="form-group-checkbox-left">
-              <input type="checkbox" id="ntp" name="ntp" value="on" %NTP_CHECKED% class="checkbox-inline">
-              <label for="ntp" class="label-inline">Enable NTP sync</label>
-            </div>
-            <div id="timezone-group" style="display: none; align-items: center; gap: 10px;">
-              <label for="timezone" style="margin: 0; white-space: nowrap;">Timezone:</label>
-              <select id="timezone" name="timezone" style="padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer; min-width: 150px;">
-                <option value="UTC">UTC (UTC+0)</option>
-                <option value="CET">CET (UTC+1)</option>
-                <option value="CEST">CEST (UTC+2)</option>
-                <option value="WET">WET (UTC+0)</option>
-                <option value="WEST">WEST (UTC+1)</option>
-                <option value="GMT">GMT (UTC+0)</option>
-                <option value="BST">BST (UTC+1)</option>
-                <option value="EST">EST (UTC-5)</option>
-                <option value="EDT">EDT (UTC-4)</option>
-                <option value="CST">CST (UTC-6)</option>
-                <option value="CDT">CDT (UTC-5)</option>
-                <option value="MST">MST (UTC-7)</option>
-                <option value="MDT">MDT (UTC-6)</option>
-                <option value="PST">PST (UTC-8)</option>
-                <option value="PDT">PDT (UTC-7)</option>
-              </select>
-            </div>
           </div>
           
           <div id="updateurl-group" class="form-group-row" %UPDATES_DISPLAY%>
@@ -167,6 +187,39 @@
             <label for="githubtoken" class="form-group-label">Token</label>
             <input type="password" id="githubtoken" name="githubtoken" value="%GITHUB_TOKEN%" placeholder="ghp_..." class="form-group-input-short">
             <button type="button" onclick="toggleTokenVisibility()" id="token-toggle" class="token-toggle-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
+          </div>
+          
+          <hr class="hr-divider">
+          
+          <div class="form-group-checkbox-simple">
+            <input type="checkbox" id="debug" name="debug" value="on" %DEBUG_CHECKED% class="checkbox-inline">
+            <label for="debug" class="label-inline">Enable Debug options</label>
+          </div>
+          
+          <div id="debug-version-fields" %DEBUG_DISPLAY%>
+            <div class="form-group-row">
+              <label for="fw_version" class="form-group-label">FW Version</label>
+              <input type="text" id="fw_version" name="fw_version" value="%FW_VERSION%" class="form-group-input">
+            </div>
+            
+            <div class="form-group-row">
+              <label for="fs_version" class="form-group-label">FS Version</label>
+              <input type="text" id="fs_version" name="fs_version" value="%FS_VERSION%" class="form-group-input">
+            </div>
+          </div>
+          
+          <div id="debug-fields" %DEBUG_DISPLAY%>
+            
+            <div class="form-group-checkbox-simple">
+              <input type="checkbox" id="gpioviewer" name="gpioviewer" value="on" %GPIOVIEWER_CHECKED% class="checkbox-inline">
+              <label for="gpioviewer" class="label-inline">Enable GPIO Viewer</label>
+            </div>
+            %GPIOVIEWER_BUTTON%
+            
+            <div class="form-group-checkbox-simple">
+              <input type="checkbox" id="ota" name="ota" value="on" %OTA_CHECKED% class="checkbox-inline">
+              <label for="ota" class="label-inline">Enable OTA Update</label>
+            </div>
           </div>
           
           <hr class="hr-divider">
