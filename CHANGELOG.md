@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.02] - 2026-02-06
+
+### Fixed
+- **LittleFS OTA update**: Use LittleFS partition type to prevent "LFS Partition Could Not be Found"
+
+### Technical Details
+- Firmware: 1,324,252 bytes (67.4% of 1.92MB OTA partition)
+- Filesystem: 512KB
+
 ## [2026.1.1.01] - 2026-02-06
 
 ### Changed
