@@ -14,6 +14,8 @@
 #include <esp_task_wdt.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <time.h>
+#include <sys/time.h>
 #include "images.h"
 #include "config.h"
 #include "settings.h"
@@ -60,6 +62,7 @@ String& gpioViewerEnabled = settings.gpioViewerEnabled;
 String& otaEnabled = settings.otaEnabled;
 String& updatesEnabled = settings.updatesEnabled;
 String& updateUrl = settings.updateUrl;
+String& ntpEnabled = settings.ntpEnabled;
 
 // Version tracking aliases
 String& currentFirmwareVersion = settings.firmwareVersion;
@@ -108,6 +111,49 @@ String jsonEscape(String str) {
     }
   }
   return result;
+}
+
+// NTP time sync (UTC)
+void syncTimeIfEnabled() {
+  if (!Settings::stringToBool(ntpEnabled)) {
+    Serial.println("NTP sync disabled");
+    return;
+  }
+
+  Serial.println("Starting NTP sync...");
+  configTime(NTP_GMT_OFFSET_SEC, NTP_DAYLIGHT_OFFSET_SEC, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
+
+  const unsigned long start = millis();
+  time_t now = 0;
+  while (now < NTP_VALID_TIME && (millis() - start) < NTP_SYNC_TIMEOUT) {
+    time(&now);
+    delay(100);
+  }
+
+  if (now >= NTP_VALID_TIME) {
+    Serial.println(String("NTP time synced: ") + ctime(&now));
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);
+    settings.saveStoredDateIfNeeded(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+  } else {
+    Serial.println("NTP sync timeout");
+    Settings::StoredDate stored = settings.getStoredDate();
+    if (stored.valid) {
+      struct tm fallbackTime = {};
+      fallbackTime.tm_year = stored.year - 1900;
+      fallbackTime.tm_mon = stored.month - 1;
+      fallbackTime.tm_mday = stored.day;
+      fallbackTime.tm_hour = 0;
+      fallbackTime.tm_min = 0;
+      fallbackTime.tm_sec = 0;
+      time_t fallback = mktime(&fallbackTime);
+      if (fallback > 0) {
+        struct timeval tv = { .tv_sec = fallback, .tv_usec = 0 };
+        settimeofday(&tv, nullptr);
+        Serial.println(String("NTP failed; using stored date: ") + stored.year + "-" + stored.month + "-" + stored.day);
+      }
+    }
+  }
 }
 
 
@@ -181,6 +227,9 @@ void setup() {
     ipDisplayTime = millis();
     ipDisplayShown = true;
     ipDisplayCleared = false;
+
+    // Sync time if enabled
+    syncTimeIfEnabled();
     
     // Initialize GPIO Viewer if enabled
     if (gpioViewerEnabled == "true" || gpioViewerEnabled == "on") {
@@ -206,8 +255,9 @@ void setup() {
       bool otaEnabledBool = (otaStatus == "true" || otaStatus == "on");
       bool dhcpEnabledBool = (useDHCP == "true" || useDHCP == "on");
       bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+      bool ntpEnabledBool = (ntpEnabled == "true" || ntpEnabled == "on");
       
-      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool](const String& var) -> String {
+      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool, ntpEnabledBool](const String& var) -> String {
         if (var == "SSID") {
           return ssid;
         }
@@ -253,6 +303,9 @@ void setup() {
         }
         if (var == "UPDATES_CHECKED") {
           return updatesEnabledBool ? "checked" : "";
+        }
+        if (var == "NTP_CHECKED") {
+          return ntpEnabledBool ? "checked" : "";
         }
         if (var == "UPDATES_DISPLAY") {
           return updatesEnabledBool ? "style=\"display: flex;\"" : "style=\"display: none;\"";
@@ -468,6 +521,21 @@ void setup() {
           Serial.println("Software updates disabled");
         }
       }
+
+      // Check NTP checkbox
+      if (request->hasParam("ntp", true)) {
+        if (ntpEnabled != "on" && ntpEnabled != "true") {
+          ntpEnabled = "on";
+          configChanged = true;
+          Serial.println("NTP sync enabled");
+        }
+      } else {
+        if (ntpEnabled == "on" || ntpEnabled == "true") {
+          ntpEnabled = "off";
+          configChanged = true;
+          Serial.println("NTP sync disabled");
+        }
+      }
       
       // Update URL
       if (request->hasParam("updateurl", true)) {
@@ -494,6 +562,9 @@ void setup() {
       // Save config changes if needed
       if (configChanged) {
         settings.save();
+        if (!shouldReboot) {
+          syncTimeIfEnabled();
+        }
       }
       
       // Set default message if reboot needed but no message set

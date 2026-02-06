@@ -13,6 +13,12 @@
 
 class Settings {
 public:
+    struct StoredDate {
+        int year;
+        int month;
+        int day;
+        bool valid;
+    };
     // Network settings
     String ssid;
     String password;
@@ -30,6 +36,9 @@ public:
     // OTA settings
     String updateUrl;
     String githubToken;
+
+    // Time sync
+    String ntpEnabled;
     
     // Version tracking
     String firmwareVersion;
@@ -76,6 +85,10 @@ public:
     
     // Print current settings to Serial
     void print();
+
+    // Stored date helpers (NTP fallback)
+    StoredDate getStoredDate();
+    void saveStoredDateIfNeeded(int year, int month, int day);
 
 private:
     Preferences preferences;

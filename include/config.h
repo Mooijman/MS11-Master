@@ -32,8 +32,8 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026.1.1.03"
-#define FILESYSTEM_VERSION "fs-2026.1.1.03"
+#define FIRMWARE_VERSION "fw-2026.1.1.04"
+#define FILESYSTEM_VERSION "fs-2026.1.1.04"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
@@ -111,6 +111,7 @@
 #define DEFAULT_OTA_ENABLED false
 #define DEFAULT_UPDATES_ENABLED false
 #define DEFAULT_DHCP_ENABLED true
+#define DEFAULT_NTP_ENABLED true
 
 // Default network settings
 #define DEFAULT_NETMASK "255.255.255.0"
@@ -161,6 +162,7 @@
 #define PARAM_UPDATES "updates"
 #define PARAM_UPDATE_URL "updateUrl"
 #define PARAM_GITHUB_TOKEN "githubToken"
+#define PARAM_NTP "ntp"
 
 // Update parameters
 #define PARAM_UPDATE_TYPE "type"
@@ -222,7 +224,19 @@
 #define TEMPLATE_GPIO_VIEWER_CHECKED "%GPIOVIEWER_CHECKED%"
 #define TEMPLATE_OTA_CHECKED "%OTA_CHECKED%"
 #define TEMPLATE_UPDATES_CHECKED "%UPDATES_CHECKED%"
+#define TEMPLATE_NTP_CHECKED "%NTP_CHECKED%"
 #define TEMPLATE_UPDATE_URL "%UPDATE_URL%"
 #define TEMPLATE_GITHUB_TOKEN "%GITHUB_TOKEN%"
+
+// ============================================================================
+// NTP TIME SYNC
+// ============================================================================
+#define NTP_SERVER_1 "pool.ntp.org"
+#define NTP_SERVER_2 "time.nist.gov"
+#define NTP_SERVER_3 "time.google.com"
+#define NTP_GMT_OFFSET_SEC 0
+#define NTP_DAYLIGHT_OFFSET_SEC 0
+#define NTP_SYNC_TIMEOUT 5000
+#define NTP_VALID_TIME 1700000000UL
 
 #endif // CONFIG_H

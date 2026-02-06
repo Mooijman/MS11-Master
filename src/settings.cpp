@@ -12,6 +12,7 @@ Settings::Settings() {
     otaEnabled = boolToString(DEFAULT_OTA_ENABLED);
     updatesEnabled = boolToString(DEFAULT_UPDATES_ENABLED);
     updateUrl = DEFAULT_UPDATE_URL;
+    ntpEnabled = boolToString(DEFAULT_NTP_ENABLED);
 }
 
 // Initialize NVS with default values on first boot
@@ -35,6 +36,7 @@ void Settings::initialize() {
     preferences.putString("updates", boolToString(DEFAULT_UPDATES_ENABLED));
     preferences.putString("dhcp", boolToString(DEFAULT_DHCP_ENABLED));
     preferences.putString("netmask", DEFAULT_NETMASK);
+    preferences.putString("ntp", boolToString(DEFAULT_NTP_ENABLED));
     
     // OTA defaults
     preferences.putString("updateUrl", DEFAULT_UPDATE_URL);
@@ -74,6 +76,7 @@ void Settings::load() {
     gpioViewerEnabled = preferences.getString("gpioviewer", boolToString(DEFAULT_GPIO_VIEWER_ENABLED));
     otaEnabled = preferences.getString("ota", boolToString(DEFAULT_OTA_ENABLED));
     updatesEnabled = preferences.getString("updates", boolToString(DEFAULT_UPDATES_ENABLED));
+    ntpEnabled = preferences.getString("ntp", boolToString(DEFAULT_NTP_ENABLED));
     
     // OTA settings
     updateUrl = preferences.getString("updateUrl", DEFAULT_UPDATE_URL);
@@ -105,6 +108,7 @@ void Settings::save() {
     preferences.putString("gpioviewer", gpioViewerEnabled);
     preferences.putString("ota", otaEnabled);
     preferences.putString("updates", updatesEnabled);
+    preferences.putString("ntp", ntpEnabled);
     
     // OTA settings
     preferences.putString("updateUrl", updateUrl);
@@ -139,6 +143,7 @@ void Settings::saveFeatures() {
     preferences.putString("gpioviewer", gpioViewerEnabled);
     preferences.putString("ota", otaEnabled);
     preferences.putString("updates", updatesEnabled);
+    preferences.putString("ntp", ntpEnabled);
     preferences.putString("updateUrl", updateUrl);
     preferences.putString("githubToken", githubToken);
     preferences.end();
@@ -242,10 +247,56 @@ void Settings::print() {
     Serial.println("  OTA:");
     Serial.println("    URL: " + updateUrl);
     Serial.println(String("    Token: ") + (githubToken.length() > 0 ? "***" : "(not set)"));
+    Serial.println("  Time:");
+    Serial.println("    NTP: " + ntpEnabled);
     Serial.println("  Versions:");
     Serial.println("    Firmware: " + firmwareVersion);
     Serial.println("    Filesystem: " + filesystemVersion);
     Serial.println();
+}
+
+// Stored date helpers (NTP fallback)
+Settings::StoredDate Settings::getStoredDate() {
+    StoredDate result{0, 0, 0, false};
+    preferences.begin(NVS_NAMESPACE_CONFIG, true);
+    int year = preferences.getInt("dateY", 0);
+    int month = preferences.getInt("dateM", 0);
+    int day = preferences.getInt("dateD", 0);
+    preferences.end();
+
+    if (year > 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        result.year = year;
+        result.month = month;
+        result.day = day;
+        result.valid = true;
+    }
+
+    return result;
+}
+
+void Settings::saveStoredDateIfNeeded(int year, int month, int day) {
+    if (year <= 1970 || month < 1 || month > 12 || day < 1 || day > 31) {
+        return;
+    }
+
+    const uint32_t currentKey = (uint32_t)(year * 10000 + month * 100 + day);
+
+    preferences.begin(NVS_NAMESPACE_CONFIG, false);
+    int storedYear = preferences.getInt("dateY", 0);
+    int storedMonth = preferences.getInt("dateM", 0);
+    int storedDay = preferences.getInt("dateD", 0);
+    uint32_t lastSavedKey = preferences.getUInt("dateSaved", 0);
+
+    const uint32_t storedKey = (uint32_t)(storedYear * 10000 + storedMonth * 100 + storedDay);
+
+    if (storedKey != currentKey && lastSavedKey != currentKey) {
+        preferences.putInt("dateY", year);
+        preferences.putInt("dateM", month);
+        preferences.putInt("dateD", day);
+        preferences.putUInt("dateSaved", currentKey);
+    }
+
+    preferences.end();
 }
 
 // Helper: Get compile-time version without prefix

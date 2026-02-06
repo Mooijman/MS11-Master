@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.04] - 2026-02-06
+
+### Added
+- **NTP Time Sync**: Network time synchronization with configurable enable/disable
+  - Checkbox in settings.html (default: enabled)
+  - Syncs on boot and after settings save (if enabled)
+  - UTC-based with configurable NTP servers (pool.ntp.org, time.nist.gov, time.google.com)
+- **Date Fallback System**: Wear-limited date storage for NTP failures
+  - Stores year/month/day in NVS (max 1x per day to reduce flash wear)
+  - Falls back to stored date if NTP sync fails
+  - Automatic fallback clock setting with stored date at midnight
+
+### Changed
+- **Settings Module**: Extended with `ntpEnabled` field and date storage helpers
+  - `getStoredDate()` - retrieves stored date from NVS
+  - `saveStoredDateIfNeeded()` - wear-limited date save (once per day maximum)
+- **Config**: Added NTP configuration constants (servers, timeout, GMT offset)
+
+### Technical Details
+- Firmware: 1,330,292 bytes (67.7% of 1.92MB OTA partition)
+- RAM: 51,572 bytes (15.7%)
+- Filesystem: 512KB
+- NVS keys: `dateY`, `dateM`, `dateD`, `dateSaved` (wear tracking)
+
 ## [2026.1.1.03] - 2026-02-06
 
 ### Fixed
