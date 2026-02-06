@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.03] - 2026-02-06
+
+### Fixed
+- **LittleFS OTA update**: Use `spiffs` subtype for LittleFS partition so Update can find it
+
+### Technical Details
+- Firmware: 1,324,252 bytes (67.4% of 1.92MB OTA partition)
+- Filesystem: 512KB
+
 ## [2026.1.1.02] - 2026-02-06
 
 ### Fixed
