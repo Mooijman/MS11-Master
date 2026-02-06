@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **XIAO ESP32-S3 Optimization**: Complete hardware optimization for Seeed Studio XIAO ESP32-S3
   - Board configuration: `seeed_xiao_esp32s3` with 921600 baud upload speed
-  - Optimized partition table: `partitions_xiao_s3.csv` (1.9MB × 2 OTA + 64KB LittleFS)
+  - Optimized partition table: `partitions_xiao_s3.csv` (1.92MB × 2 OTA + 512KB LittleFS)
   - GPIO pin update: I2C on GPIO6 (SDA/D5) and GPIO7 (SCL/D6)
   - Documentation: XIAO_S3_SETUP.md with complete implementation guide
 
@@ -16,12 +16,15 @@ All notable changes to this project will be documented in this file.
 - **README.md**: Updated hardware specifications for XIAO S3 with pinout table
 - **MIGRATION.md**: Added comprehensive XIAO S3 optimization section with DevKitC-1 comparison
 - **Version format**: Changed to dotted format `2026.1.1.00` for better semantic versioning
+- **LittleFS partition**: Increased from 128KB to 512KB for data storage and logging
 
 ### Technical Details
-- Build time: 16.37s (clean build)
-- Firmware: 1,308,108 bytes (64.4% of 2MB OTA partition)
+- Build time: 16.01s (clean build)
+- Firmware: 1,308,108 bytes (66.5% of 1.92MB OTA partition)
+- Filesystem: 512 KB (116 KB web files + 396 KB available for data/logging)
 - RAM: 51,532 bytes (15.7%)
 - Hardware: XIAO ESP32-S3 @ 240MHz, 320KB RAM, 8MB Flash
+- Flash usage: 4.45 MB of 8 MB (55% utilized)
 - Backwards compatible: DevKitC-1 partition backup as `partitions_esp32s3_devkit.csv`
 
 ## [2026-1.0.14] - 2026-02-06
