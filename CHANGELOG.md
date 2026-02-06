@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.01] - 2026-02-06
+
+### Changed
+- **LittleFS partition**: Increased from 128KB to 512KB for enhanced data storage and logging capability
+  - Web files: 116KB
+  - Available for data/logging: 396KB
+- **Flash usage**: Optimized to 4.45MB of 8MB total (55% utilized)
+- **Updated release binaries** with larger LittleFS partition
+
+### Technical Details
+- Build time: 16.01s (clean build)
+- Firmware: 1,308,108 bytes (66.5% of 1.92MB OTA partition)
+- Filesystem: 512KB (previously 128KB)
+- Flash layout: 1.92MB × 2 OTA + 512KB LittleFS
+- Backwards compatible with previous XIAO S3 releases
+
 ## [2026.1.1.00] - 2026-02-06
 
 ### Added
