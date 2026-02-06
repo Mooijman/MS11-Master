@@ -2,7 +2,10 @@
 
 XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA pull updates, LittleFS storage, OLED display en web interface.
 
-**Status**: ✅ Geoptimaliseerd voor **XIAO ESP32-S3** (compact board, 8MB flash)
+**Status**: ✅ Geoptimaliseerd voor **XIAO ESP32-S3** (compact board, 8MB flash)  
+**Current Version**: `2026.1.1.05` (Timezone selection feature)  
+**Firmware Size**: 1.33MB (67.7% of OTA partition)  
+**Last Updated**: 6 februari 2026
 
 ## Migration Notes (ESP32-WROOM → ESP32-S3)
 
@@ -301,19 +304,44 @@ In platformio.ini:
 - Debug level 5 + GPIO Viewer = zeer traag systeem
 - LittleFS atomic writes voorkomen corruptie
 
+## Recent Updates (February 2026)
+
+### v2026.1.1.05 - Timezone Selection
+- Timezone dropdown menu in settings.html
+- 15+ timezones (UTC, CET, EST, PST, etc.)
+- Only visible when NTP sync is enabled
+- Synced with system time when NTP is active
+
+### v2026.1.1.04 - NTP Time Synchronization
+- Network time sync with configurable enable/disable
+- Fallback to stored date if NTP sync fails
+- Wear-limited storage: max 1x per day
+- Three NTP servers: pool.ntp.org, time.nist.gov, time.google.com
+- Automatic sync on boot and after settings save
+
 ## Web Interface
 
 - **/** - Device info en status
-- **/settings** - Configuratie (GPIO Viewer, Updates, Reboot)
+- **/settings** - Configuratie (NTP sync, Timezone, GPIO Viewer, Updates, Reboot)
 - **/update** - OTA update interface met status
 - **/files** - File browser voor LittleFS
 - **/api/update/status** - Update status API (JSON)
 - **/api/update/start** - Start update download
+
+## Documentation
+
+- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - AI Agent guidance (architecture, modules, conventions)
+- **[SESSION_SUMMARY.md](SESSION_SUMMARY.md)** - Session documentation (February 6, 2026)
+- **[DECISIONS.md](DECISIONS.md)** - Technical decisions and workflows
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete release history
+- **[docs/OTA_Testing_Checklist.md](docs/OTA_Testing_Checklist.md)** - OTA update testing guide
+- **[XIAO_S3_SETUP.md](XIAO_S3_SETUP.md)** - XIAO ESP32-S3 specific setup guide
 
 ## Licentie
 
 Ontwikkeld voor Waacs.
 
 ## Repository
+
 
 https://github.com/Mooijman/ESP32-baseline
