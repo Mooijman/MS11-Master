@@ -64,6 +64,36 @@
           });
       }
     }
+    // Sequential color hover for buttons
+    var hoverColors = [
+      '#034078', // primary
+      '#1282A2', // secondary
+      '#DAA520', // gold
+      '#764ba2', // purple
+      '#27ae60', // success
+      '#3498db', // info
+      '#ffc107', // warning
+      '#e74c3c'  // danger
+    ];
+    var colorIndex = 0;
+    
+    function initSequentialHover() {
+      var buttons = document.querySelectorAll('button, a.btn-small, input[type=submit]');
+      
+      buttons.forEach(function(btn) {
+        btn.addEventListener('mouseenter', function() {
+          this.style.backgroundColor = hoverColors[colorIndex];
+          this.style.borderColor = hoverColors[colorIndex];
+          colorIndex = (colorIndex + 1) % hoverColors.length;
+        });
+        
+        btn.addEventListener('mouseleave', function() {
+          this.style.backgroundColor = '';
+          this.style.borderColor = '';
+        });
+      });
+    }
+    
     window.onload = function() {
       toggleNetworkFields();
       toggleNtpFields();
@@ -81,6 +111,9 @@
         // Update every 1 second
         setInterval(updateCurrentDateTime, 1000);
       }
+      
+      // Initialize sequential color hover
+      initSequentialHover();
     }
   </script>
 </head>
@@ -188,8 +221,6 @@
             <input type="password" id="githubtoken" name="githubtoken" value="%GITHUB_TOKEN%" placeholder="ghp_..." class="form-group-input-short">
             <button type="button" onclick="toggleTokenVisibility()" id="token-toggle" class="token-toggle-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
           </div>
-          
-          <hr class="hr-divider">
           
           <div class="form-group-checkbox-simple">
             <input type="checkbox" id="debug" name="debug" value="on" %DEBUG_CHECKED% class="checkbox-inline">

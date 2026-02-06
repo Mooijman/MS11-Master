@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.07] - 2026-02-06
+
+### Changed
+- **Settings UI Polish**: Final visual refinements for production
+  - Removed HR divider above "Enable Debug options" for cleaner layout
+  - Optimized style.css: consolidated button styles, removed redundant properties
+  - Improved CSS maintainability with better organization and comments
+  - Smooth 0.5s color transitions on button hover
+
+### Technical Details
+- Firmware: 1,333,968 bytes (67.8% of 1.92MB OTA partition)
+- RAM: 51,588 bytes (15.7%)
+- Filesystem: 512KB
+- CSS cleanup: removed duplicate border-color properties, consolidated spacing rules
+
 ## [2026.1.1.06] - 2026-02-06
 
 ### Changed

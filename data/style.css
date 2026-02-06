@@ -181,7 +181,7 @@ input[type=submit],
   margin: 0;
   border-radius: var(--border-radius-sm);
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: background-color 0.5s ease;  /* Smooth color transition for hover effect */
 }
 
 button {
@@ -226,43 +226,40 @@ input[type=submit].btn-full {
    ========================================== */
 .btn-reset-wifi,
 .btn-update-link,
-.btn-open {
+.btn-open,
+.btn-reinstall {
   width: 100px;
   padding: 3px 8px;
   font-size: var(--font-size-sm);
   min-width: 80px;
   background-color: var(--color-neutral-gray);
-  border-color: var(--color-neutral-gray);
-  color: var(--color-neutral-white);
   border: none;
   border-radius: var(--border-radius-sm);
   cursor: pointer;
+  color: var(--color-neutral-white);
   text-decoration: none;
   display: inline-block;
   text-align: center;
   transition: all var(--transition-base);
 }
 
+.btn-reinstall {
+  background-color: var(--color-neutral-black);
+}
+
 .btn-reset-wifi:hover,
 .btn-open:hover {
-  background-color: var(--color-info) !important;
-  border-color: #2980b9 !important;
+  background-color: var(--color-info);
 }
 
 .btn-update-link:hover,
 .btn-update:hover,
 .btn-reinstall:hover {
-  background-color: var(--color-danger) !important;
-  border-color: var(--color-danger-dark) !important;
+  background-color: var(--color-danger);
 }
 
 .btn-i2c:hover {
-  background-color: var(--color-accent-purple) !important;
-}
-
-.btn-reinstall {
-  background-color: var(--color-neutral-black);
-  border-color: var(--color-neutral-black);
+  background-color: var(--color-accent-purple);
 }
 
 .btn-secondary {
@@ -897,25 +894,22 @@ a#gpioViewerBtn:hover {
   text-align: left;
 }
 
-#ntp-checkbox-row {
-  margin-bottom: var(--spacing-md);
+/* Settings Page - Specific Spacing Adjustments */
+#ntp-checkbox-row,
+#github-update-checkbox-row {
+  margin-bottom: var(--spacing-md); /* Tight coupling with child fields */
 }
 
 #ntp-times-group {
-  margin-bottom: var(--spacing-3xl);
-}
-
-#github-update-checkbox-row {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-3xl); /* Section spacing */
 }
 
 #updateurl-group {
-  margin-top: var(--spacing-md);
-  margin-bottom: var(--spacing-md);
+  margin: var(--spacing-md) 0; /* Symmetrical spacing */
 }
 
 #githubtoken-group {
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg); /* Small section break */
 }
 
 .form-actions-right {
