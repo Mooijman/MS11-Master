@@ -23,11 +23,6 @@
 // Global instances
 Preferences preferences;
 
-// Background update check timing
-unsigned long lastBackgroundCheck = 0;
-int checksToday = 0;
-unsigned long dayStartTime = 0;
-
 // GPIO Viewer pointer (only instantiated if enabled)
 GPIOViewer* gpio_viewer = nullptr;
 
@@ -65,10 +60,8 @@ String& gpioViewerEnabled = settings.gpioViewerEnabled;
 String& otaEnabled = settings.otaEnabled;
 String& updatesEnabled = settings.updatesEnabled;
 String& updateUrl = settings.updateUrl;
-String& storedFirmwareVersion = settings.firmwareVersion;
-String& storedFilesystemVersion = settings.filesystemVersion;
 
-// Aliases for version tracking (used in some functions)
+// Version tracking aliases
 String& currentFirmwareVersion = settings.firmwareVersion;
 String& currentFilesystemVersion = settings.filesystemVersion;
 
@@ -123,6 +116,7 @@ void setup() {
 
   // Initialize OLED display
   display.init();
+  display.normalDisplay();  // Ensure normal display mode
   display.setFont(ArialMT_Plain_10);
   display.clear();
   
@@ -239,10 +233,10 @@ void setup() {
           return debugEnabledBool ? "style=\"display: block;\"" : "style=\"display: none;\"";
         }
         if (var == "FW_VERSION") {
-          return storedFirmwareVersion;
+          return currentFirmwareVersion;
         }
         if (var == "FS_VERSION") {
-          return storedFilesystemVersion;
+          return currentFilesystemVersion;
         }
         if (var == "GPIOVIEWER_CHECKED") {
           return gpioEnabled ? "checked" : "";
@@ -400,10 +394,10 @@ void setup() {
       if (request->hasParam("fw_version", true)) {
         String newFwVersion = request->getParam("fw_version", true)->value();
         newFwVersion.trim();
-        if (newFwVersion != storedFirmwareVersion) {
-          storedFirmwareVersion = newFwVersion;
+        if (newFwVersion != currentFirmwareVersion) {
+          currentFirmwareVersion = newFwVersion;
           configChanged = true;
-          Serial.println("FW version changed to: " + storedFirmwareVersion);
+          Serial.println("FW version changed to: " + currentFirmwareVersion);
         }
       }
       
@@ -411,10 +405,10 @@ void setup() {
       if (request->hasParam("fs_version", true)) {
         String newFsVersion = request->getParam("fs_version", true)->value();
         newFsVersion.trim();
-        if (newFsVersion != storedFilesystemVersion) {
-          storedFilesystemVersion = newFsVersion;
+        if (newFsVersion != currentFilesystemVersion) {
+          currentFilesystemVersion = newFsVersion;
           configChanged = true;
-          Serial.println("FS version changed to: " + storedFilesystemVersion);
+          Serial.println("FS version changed to: " + currentFilesystemVersion);
         }
       }
       
@@ -589,6 +583,40 @@ void setup() {
       });
     });
     
+    // Confirmation page with auto-refresh
+    server.on("/confirm.html", HTTP_GET, [](AsyncWebServerRequest *request) {
+      String message = "Update Successful!";
+      String messageClass = "text-success";
+      
+      // Get message from query parameter if provided
+      if (request->hasParam("message")) {
+        message = request->getParam("message")->value();
+      }
+      if (request->hasParam("type")) {
+        String type = request->getParam("type")->value();
+        if (type == "success") {
+          messageClass = "text-success";
+        } else if (type == "error") {
+          messageClass = "text-error";
+        } else if (type == "warning") {
+          messageClass = "text-warning";
+        }
+      }
+      
+      request->send(LittleFS, "/confirm.html", "text/html", false, [message, messageClass](const String& var) -> String {
+        if (var == "MESSAGE") {
+          return message;
+        }
+        if (var == "MESSAGE_CLASS") {
+          return messageClass;
+        }
+        if (var == "RELOAD_BUTTON") {
+          return ""; // No button needed, auto-refresh handles it
+        }
+        return String();
+      });
+    });
+    
     // API: Scan I2C bus
     server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
       bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
@@ -705,173 +733,69 @@ void setup() {
     
     // API: Get update status
     server.on("/api/update/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      // Reload current versions (sync with compile-time versions)
       settings.syncVersions();
-      
-      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
-      
-      JsonDocument doc;
-      
-      doc["currentFirmwareVersion"] = currentFirmwareVersion;
-      doc["currentFilesystemVersion"] = currentFilesystemVersion;
-      doc["updatesEnabled"] = (updatesEnabled == "on" || updatesEnabled == "true");
-      doc["debugEnabled"] = (debugEnabled == "on" || debugEnabled == "true");
-      doc["hasGithubToken"] = (githubToken.length() > 0);
-      doc["remoteVersion"] = updateInfo.remoteVersion;
-      doc["state"] = updateInfo.state;
-      doc["firmwareAvailable"] = updateInfo.firmwareAvailable;
-      doc["littlefsAvailable"] = updateInfo.littlefsAvailable;
-      doc["availableFirmwareVersion"] = updateInfo.remoteVersion;
-      doc["availableFilesystemVersion"] = updateInfo.remoteVersion;
-      doc["lastCheck"] = updateInfo.lastCheck;
-      doc["lastError"] = updateInfo.lastError;
-      doc["downloadProgress"] = updateInfo.downloadProgress;
-      doc["filesystemUpdateDone"] = updateInfo.filesystemUpdateDone;
-      
-      String response;
-      serializeJson(doc, response);
+      String response = githubUpdater->handleStatusRequest(
+        currentFirmwareVersion, 
+        currentFilesystemVersion,
+        (updatesEnabled == "on" || updatesEnabled == "true"),
+        (debugEnabled == "on" || debugEnabled == "true"),
+        (githubToken.length() > 0)
+      );
       request->send(200, "application/json", response);
     });
     
     // API: Check for updates
     server.on("/api/update/check", HTTP_POST, [](AsyncWebServerRequest *request) {
-      Serial.println("=== UPDATE CHECK REQUESTED ===");
-      bool success = githubUpdater->checkGitHubRelease(updateUrl, githubToken, 
-                                                       currentFirmwareVersion, currentFilesystemVersion);
-      
-      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
-      
-      DynamicJsonDocument doc(256);
-      doc["success"] = success;
-      doc["message"] = success ? "Check completed" : "Check failed";
-      doc["updateAvailable"] = updateInfo.firmwareAvailable || updateInfo.littlefsAvailable;
-      
-      String response;
-      serializeJson(doc, response);
+      String response = githubUpdater->handleCheckRequest(
+        updateUrl, githubToken, 
+        currentFirmwareVersion, currentFilesystemVersion
+      );
       request->send(200, "application/json", response);
     });
     
     // API: Install update
     server.on("/api/update/install", HTTP_POST, [](AsyncWebServerRequest *request) {
-      Serial.println("=== UPDATE INSTALL REQUESTED ===");
       String type = "both";
-      
       if (request->hasParam("type", true)) {
         type = request->getParam("type", true)->value();
       }
       
-      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
+      bool shouldReboot = false;
+      String response = githubUpdater->handleInstallRequest(
+        type, githubToken,
+        currentFirmwareVersion, currentFilesystemVersion,
+        shouldReboot
+      );
       
-      Serial.println("Install type: " + type);
-      Serial.println("Firmware available: " + String(updateInfo.firmwareAvailable));
-      Serial.println("LittleFS available: " + String(updateInfo.littlefsAvailable));
-      
-      bool success = false;
-      String message = "";
-      
-      if (type == "firmware" && updateInfo.firmwareAvailable) {
-        success = githubUpdater->downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFirmwareVersion);
-        message = success ? "Firmware installed" : "Firmware install failed";
-      } else if (type == "littlefs" && updateInfo.littlefsAvailable) {
-        success = githubUpdater->downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFilesystemVersion);
-        message = success ? "LittleFS installed" : "LittleFS install failed";
-      } else if (type == "both") {
-        if (updateInfo.firmwareAvailable) {
-          success = githubUpdater->downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFirmwareVersion);
-          if (!success) {
-            message = "Firmware install failed";
-          }
-        }
-        if (success && updateInfo.littlefsAvailable) {
-          success = githubUpdater->downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFilesystemVersion);
-          if (!success) {
-            message = "LittleFS install failed";
-          } else {
-            message = "Both installed";
-          }
-        } else if (success) {
-          message = "Firmware installed";
-        }
-      }
-      updateInfo.filesystemUpdateDone = false;
-      
-      DynamicJsonDocument doc(256);
-      doc["success"] = success;
-      doc["message"] = message;
-      doc["rebootRequired"] = success;
-      
-      String response;
-      serializeJson(doc, response);
       request->send(200, "application/json", response);
       
-      if (success) {
-        delay(2000);
+      if (shouldReboot) {
+        Serial.println("Update successful, rebooting in 1 second...");
+        delay(1000);
         ESP.restart();
       }
     });
     
     // API: Reinstall current version (debug only)
     server.on("/api/update/reinstall", HTTP_POST, [](AsyncWebServerRequest *request) {
-      Serial.println("=== REINSTALL REQUESTED ===");
-      
-      if (debugEnabled != "on" && debugEnabled != "true") {
-        request->send(403, "application/json", "{\"success\":false,\"message\":\"Debug mode required\"}");
-        return;
-      }
-      
       String type = "both";
       if (request->hasParam("type", true)) {
         type = request->getParam("type", true)->value();
       }
       
-      Serial.println("Reinstall type: " + type);
+      bool shouldReboot = false;
+      String response = githubUpdater->handleReinstallRequest(
+        type, githubToken,
+        currentFirmwareVersion, currentFilesystemVersion,
+        (debugEnabled == "on" || debugEnabled == "true"),
+        shouldReboot
+      );
       
-      UpdateInfo& updateInfo = githubUpdater->getUpdateInfo();
-      String fwUrl = updateInfo.firmwareUrl;
-      String fsUrl = updateInfo.littlefsUrl;
-      
-      bool success = false;
-      String message = "";
-      
-      if (type == "firmware" && !fwUrl.isEmpty()) {
-        success = githubUpdater->downloadAndInstallFirmware(fwUrl, githubToken, currentFirmwareVersion);
-        message = success ? "Firmware reinstalled" : "Firmware reinstall failed";
-      } else if (type == "littlefs" && !fsUrl.isEmpty()) {
-        success = githubUpdater->downloadAndInstallLittleFS(fsUrl, githubToken, currentFilesystemVersion);
-        message = success ? "LittleFS reinstalled" : "LittleFS reinstall failed";
-      } else if (type == "both") {
-        if (!fwUrl.isEmpty()) {
-          success = githubUpdater->downloadAndInstallFirmware(fwUrl, githubToken, currentFirmwareVersion);
-          if (!success) {
-            message = "Firmware reinstall failed";
-          }
-        }
-        if (success && !fsUrl.isEmpty()) {
-          success = githubUpdater->downloadAndInstallLittleFS(fsUrl, githubToken, currentFilesystemVersion);
-          if (!success) {
-            message = "LittleFS reinstall failed";
-          } else {
-            message = "Both reinstalled";
-          }
-        } else if (success) {
-          message = "Firmware reinstalled";
-        }
-      } else {
-        message = "No update URLs available. Check for updates first.";
-      }
-      updateInfo.filesystemUpdateDone = false;
-      
-      DynamicJsonDocument doc(256);
-      doc["success"] = success;
-      doc["message"] = message;
-      doc["rebootRequired"] = success;
-      
-      String response;
-      serializeJson(doc, response);
       request->send(200, "application/json", response);
       
-      if (success) {
-        delay(2000);
+      if (shouldReboot) {
+        Serial.println("Reinstall successful, rebooting in 1 second...");
+        delay(1000);
         ESP.restart();
       }
     });
@@ -1211,7 +1135,7 @@ void loop() {
 void performReboot() {
   Serial.println("Showing reboot message on display");
   display.clear();
-  display.display();
+  display.invertDisplay();  // Yellow background
   display.drawString(0, 26, "Rebooting...");
   display.display();
   Serial.println("Reboot message displayed");

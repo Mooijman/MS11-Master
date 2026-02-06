@@ -1,6 +1,22 @@
-# ESP32 Baseline - WiFi Manager + OTA Pull Updates + OLED
+# XIAO ESP32-S3 Baseline - WiFi Manager + OTA Pull Updates + OLED
 
-ESP32 baseline project met WiFi configuration manager, GitHub-based OTA pull updates, LittleFS storage, OLED display en web interface.
+XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA pull updates, LittleFS storage, OLED display en web interface.
+
+**Status**: ✅ Geoptimaliseerd voor **XIAO ESP32-S3** (compact board, 8MB flash)
+
+## Migration Notes (ESP32-WROOM → ESP32-S3)
+
+### Automatisch aangepast
+- ✅ **OLED I2C pins**: GPIO5,4 → GPIO8,9 (zie [include/config.h](include/config.h#L46-L48))
+- ✅ **Partition table**: Aangepast voor S3 flash layout ([partitions_esp32s3.csv](partitions_esp32s3.csv))
+- ✅ **PlatformIO default**: `esp32dev` → `esp32s3dev`
+- ✅ **Build environment**: Platform & dependencies
+
+### Handmatig te controleren
+- ⚠️ **GPIO assignments**: Check je custom GPIO usage (pins zijn van layout afhankelijk)
+- ⚠️ **SPI/PSRAM**: ESP32S3 heeft native SPI4 voor PSRAM - check je SPI configuraties
+- ⚠️ **USB CDC**: Seriële monitor via USB-C (niet meer via UART)
+- ⚠️ **JTAG debugging**: Pin layout veranderd (zie [ESP32S3 datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf))
 
 ## Features
 
@@ -18,10 +34,30 @@ ESP32 baseline project met WiFi configuration manager, GitHub-based OTA pull upd
 
 ## Hardware
 
-- **Board**: ESP32-D0WDQ6 (rev 1.0)
-- **Flash**: 4MB
-- **Partitions**: Custom OTA-enabled (app0, app1, littlefs)
-- **Display**: SSD1306 OLED (optional)
+**Target Board**: XIAO ESP32-S3 (Seeed Studio)
+
+### Specifications
+- **Chip**: ESP32-S3 Dual Core (240 MHz)
+- **Flash**: 8MB (expandable via microSD)
+- **SRAM**: 320KB
+- **Size**: Ultra-compact (21x17.5mm)
+- **USB**: USB-C @ 921600 baud
+- **Partitions**: Optimized for 8MB flash ([partitions_xiao_s3.csv](partitions_xiao_s3.csv))
+  - `nvs`: 0x9000 - 0xDFFF (20KB)
+  - `otadata`: 0xE000 - 0xEFFF (4KB)
+  - `app0` (OTA_0): 0x10000 - 0x1FFFFF (1.9MB)
+  - `app1` (OTA_1): 0x200000 - 0x3EFFFF (1.9MB)
+  - `littlefs`: 0x3F0000 - 0x3FFFFF (64KB)
+- **Display**: SSD1306 OLED I2C (GPIO6=SDA, GPIO7=SCL)
+
+### XIAO S3 Pin Layout
+| Function | GPIO | Silk Label |
+|----------|------|------------|
+| I2C SDA | GPIO6 | D5 |
+| I2C SCL | GPIO7 | D6 |
+| UART TX | GPIO43 | D7 |
+| UART RX | GPIO44 | D8 |
+| Power | 5V / GND | — |
 
 ## Dependencies
 
@@ -79,16 +115,36 @@ Versies volgen het format: `type-year-major.minor.patch`
    - Tag: `fs-2026-1.0.01`
    - Upload binary als: `fs.bin`
 
-### Binaries Genereren
+### Binaries Genereren (XIAO ESP32-S3)
 
 ```bash
-# Compileer project
-pio run -e esp32dev
+# Compileer & upload firmware via USB-C (921600 baud)
+pio run -e esp32s3dev -t upload
 
-# Binaries zijn beschikbaar op:
-.pio/build/esp32dev/firmware.bin  # → fw.bin
-.pio/build/esp32dev/littlefs.bin  # → fs.bin
+# Upload LittleFS filesystem
+pio run -e esp32s3dev -t uploadfs
+
+# Alleen compileren (geen upload)
+pio run -e esp32s3dev
+
+# Clean rebuild (indien cache problemen)
+pio run -e esp32s3dev --target clean && pio run -e esp32s3dev
+
+# Binaries beschikbaar op:
+.pio/build/esp32s3dev/firmware.bin  # → fw-YYYY-M.m.p.bin
+.pio/build/esp32s3dev/littlefs.bin  # → fs-YYYY-M.m.p.bin
 ```
+
+**XIAO S3 Upload Details**:
+- Auto-detection via USB-C (CDC)
+- Baud rate: 921600 (optimized for XIAO)
+- Partition layout: 1.9MB × 2 (dual OTA) + 64KB (LittleFS)
+- Flash usage: ~65% per partition (1.3MB firmware)
+
+⚠️ **Let op**: 
+- Altijd firmware EN LittleFS samen uploaden na code changes!
+- LittleFS update vereist manual power cycle (herstart reboots niet)
+- First boot in AP mode voor WiFi configuratie
 
 ### Update Proces
 

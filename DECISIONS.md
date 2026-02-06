@@ -2,6 +2,45 @@
 
 Dit document beschrijft belangrijke technische beslissingen en de redenering erachter.
 
+## ESP32-WROOM → ESP32-S3 Migration (Feb 2026)
+
+### Hardware Switch Rationale
+Geport van ESP32-WROOM-32 naar ESP32-S3-DevKitC-1 om:
+- **Performance**: Dual-core @ 240 MHz (vs single @ 160 MHz)
+- **Memory**: 8MB Flash + 8MB PSRAM (vs 4MB Flash only)
+- **Connectivity**: USB-C native CDC (vs UART + CH340)
+- **Future-proof**: More GPIO, advanced peripherals, better support
+- **Maintainability**: WROOM EOL, S3 is preferred platform for new designs
+
+### Changes Made
+```cpp
+// platformio.ini
+[platformio]
+default_envs = esp32s3dev  # Changed from esp32dev
+
+// include/config.h
+#define OLED_SDA_PIN 8   # GPIO5 → GPIO8 (S3 has I2C on different pins)
+#define OLED_SCL_PIN 9   # GPIO4 → GPIO9
+```
+
+### Backwards Compatibility
+- Both environments still supported in platformio.ini (see `[env:esp32dev]`)
+- Code is hardware-agnostic (all pins in config.h)
+- Easy to revert if needed (see MIGRATION.md)
+
+### Build Procedure Update
+```bash
+# Old (WROOM)
+pio run -e esp32dev -t upload
+
+# New (S3) - Now default
+pio run  # or explicitly: pio run -e esp32s3dev
+```
+
+See [MIGRATION.md](MIGRATION.md) for complete porting details.
+
+---
+
 ## GitHub Release Tagging Convention
 
 ### Standard
@@ -12,10 +51,10 @@ Bij het maken van een nieuwe GitHub release:
 
 ### Procedure
 ```bash
-# Na compilatie en testen:
+# Na compilatie en testen (now on S3):
 mkdir -p release/YYYY-M.0.NN
-cp .pio/build/esp32dev/firmware.bin release/YYYY-M.0.NN/fw-YYYY-M.0.NN.bin
-cp .pio/build/esp32dev/littlefs.bin release/YYYY-M.0.NN/fs-YYYY-M.0.NN.bin
+cp .pio/build/esp32s3dev/firmware.bin release/YYYY-M.0.NN/fw-YYYY-M.0.NN.bin
+cp .pio/build/esp32s3dev/littlefs.bin release/YYYY-M.0.NN/fs-YYYY-M.0.NN.bin
 
 # Git commit en tag
 git add -A

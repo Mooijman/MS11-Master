@@ -45,7 +45,7 @@
               
               <!-- Reinstall button (shown when debug enabled and up-to-date) -->
               <div id="reinstall-section" class="text-right hidden">
-                <button id="reinstall-btn" class="btn-small btn-reinstall">Reinstall</button>
+                <button id="reinstall-btn" onclick="reinstallVersion('both')" class="btn-small btn-reinstall">Reinstall</button>
               </div>
             </div>
             
@@ -69,9 +69,9 @@
                 <p class="update-warning-text-spacing">DO NOT DISCONNECT POWER!</p>
               </div>
               
-              <div id="reboot-required" class="reboot-warning-box hidden">
-                <p class="reboot-warning-text"><strong>⚠️ Rebooting device.</strong></p>
-                <p class="reboot-warning-text-spacing">Please wait...</p>
+              <div id="update-success" class="update-success-box hidden">
+                <p class="update-success-text">✅ Update Successful!</p>
+                <p class="reboot-warning-text-spacing" style="color: #2e7d32;">Rebooting device...</p>
               </div>
             </div>
           </div>
@@ -85,10 +85,17 @@
     let pollInterval;
     let currentUpdateType = ''; // Track which type of update is in progress
     let forcedUpdateInProgress = false;
+    let deviceRebooting = false;
+    let rebootDetectionCount = 0;
 
     function updateWarningText() {
+      console.log('updateWarningText called, currentUpdateType:', currentUpdateType);
       const warningTextEl = document.querySelector('#update-warning .update-warning-text');
-      if (!warningTextEl) return;
+      console.log('warningTextEl:', warningTextEl);
+      if (!warningTextEl) {
+        console.warn('Warning text element not found!');
+        return;
+      }
       if (currentUpdateType === 'firmware') {
         warningTextEl.textContent = '⚠️ Updating Firmware';
       } else if (currentUpdateType === 'littlefs') {
@@ -98,16 +105,32 @@
       } else {
         warningTextEl.textContent = '⚠️ Updating...';
       }
+      console.log('updateWarningText completed');
     }
 
     function showUpdateInProgressUI() {
+      console.log('showUpdateInProgressUI called');
       updateWarningText();
-      document.getElementById('update-warning').style.display = 'block';
-      document.querySelector('.card .header a.card-close').style.display = 'none';
-      document.getElementById('update-content').style.display = 'none';
-      document.getElementById('update-disabled').style.display = 'none';
-      document.getElementById('update-status-section').style.display = 'block';
-      document.getElementById('reboot-required').style.display = 'none';
+      
+      const updateWarning = document.getElementById('update-warning');
+      if (updateWarning) updateWarning.style.display = 'block';
+      
+      const cardClose = document.querySelector('.card .header a.card-close');
+      if (cardClose) cardClose.style.display = 'none';
+      
+      const updateContent = document.getElementById('update-content');
+      if (updateContent) updateContent.style.display = 'none';
+      
+      const updateDisabled = document.getElementById('update-disabled');
+      if (updateDisabled) updateDisabled.style.display = 'none';
+      
+      const updateStatusSection = document.getElementById('update-status-section');
+      if (updateStatusSection) updateStatusSection.style.display = 'block';
+      
+      const rebootRequired = document.getElementById('reboot-required');
+      if (rebootRequired) rebootRequired.style.display = 'none';
+      
+      console.log('showUpdateInProgressUI completed');
     }
     
     function updateStatus() {
@@ -180,10 +203,20 @@
             document.getElementById('update-section').style.display = 'none';
             // Show Reinstall button if debug is enabled
             if (data.debugEnabled) {
+              console.log('Debug enabled, showing reinstall button');
               const reinstallBtn = document.getElementById('reinstall-btn');
-              reinstallBtn.onclick = () => reinstallVersion('both');
+              if (reinstallBtn) {
+                console.log('Reinstall button found, attaching onclick');
+                reinstallBtn.onclick = () => {
+                  console.log('Dynamic onclick triggered');
+                  reinstallVersion('both');
+                };
+              } else {
+                console.error('Reinstall button element not found!');
+              }
               document.getElementById('reinstall-section').style.display = 'block';
             } else {
+              console.log('Debug disabled, hiding reinstall button');
               document.getElementById('reinstall-section').style.display = 'none';
             }
           } else {
@@ -228,11 +261,11 @@
           }
           if (data.state === 5) { // SUCCESS
             forcedUpdateInProgress = false;
-            // Hide all content except reboot-required box
+            // Hide all content except update-success box
             document.getElementById('update-content').style.display = 'none';
             document.getElementById('update-disabled').style.display = 'none';
             document.getElementById('update-warning').style.display = 'none';
-            document.getElementById('reboot-required').style.display = 'block';
+            document.getElementById('update-success').style.display = 'block';
             document.getElementById('update-status-section').style.display = 'block';
             document.querySelector('.card .header a.card-close').style.display = 'none';
             stopPolling();
@@ -243,12 +276,22 @@
         })
         .catch(error => {
           console.error('Status update failed:', error);
+          // If we're in forced update mode and get connection error, device is rebooting
+          if (forcedUpdateInProgress && !deviceRebooting) {
+            rebootDetectionCount++;
+            console.log('Connection lost during update (count: ' + rebootDetectionCount + '), device rebooting...');
+            // First connection error = device is rebooting, redirect immediately to confirm page
+            console.log('Reboot detected, redirecting to success page...');
+            deviceRebooting = true;
+            stopPolling();
+            window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
+          }
         });
     }
     
     function startPolling() {
       if (!pollInterval) {
-        pollInterval = setInterval(updateStatus, 2000);
+        pollInterval = setInterval(updateStatus, 500);
       }
     }
     
@@ -278,11 +321,13 @@
     
     function installUpdate(type) {
       console.log('installUpdate called with type:', type);
-      currentUpdateType = type; // Store the update type for display purposes
+      currentUpdateType = type;
       if (!confirm('Device will restart after update. Continue?')) return;
       
       console.log('User confirmed, starting update...');
       forcedUpdateInProgress = true;
+      deviceRebooting = false;
+      rebootDetectionCount = 0;
       showUpdateInProgressUI();
       startPolling();
       
@@ -291,31 +336,38 @@
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'type=' + type
       })
-      .then(response => {
-        console.log('Response received:', response.status);
-        return response.json();
-      })
+      .then(response => response.json())
       .then(data => {
         console.log('Response data:', data);
         if (data.rebootRequired) {
-          console.log('Reboot required, device will restart');
+          console.log('Reboot required, redirecting to success page immediately');
+          stopPolling();
+          window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
         } else if (!data.success) {
+          console.error('Update failed:', data.message);
+          alert('Update failed: ' + data.message);
+          document.getElementById('update-warning').style.display = 'none';
           stopPolling();
         }
       })
       .catch(error => {
         console.error('Update error:', error);
-        stopPolling();
+        // Don't stop polling on error during download - device may still be updating
       });
     }
     
     function reinstallVersion(type) {
       console.log('reinstallVersion called with type:', type);
       currentUpdateType = type;
-      if (!confirm('This will reinstall the current version. Device will restart. Continue?')) return;
+      if (!confirm('This will reinstall the current version. Device will restart. Continue?')) {
+        console.log('User cancelled reinstall');
+        return;
+      }
       
       console.log('User confirmed, starting reinstall...');
       forcedUpdateInProgress = true;
+      deviceRebooting = false;
+      rebootDetectionCount = 0;
       showUpdateInProgressUI();
       startPolling();
       
@@ -324,22 +376,43 @@
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'type=' + type
       })
-      .then(response => {
-        console.log('Response received:', response.status);
-        return response.json();
-      })
+      .then(response => response.json())
       .then(data => {
         console.log('Response data:', data);
         if (data.rebootRequired) {
-          console.log('Reboot required, device will restart');
+          console.log('Reboot required, redirecting to success page immediately');
+          stopPolling();
+          window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
         } else if (!data.success) {
+          console.error('Reinstall failed:', data.message);
+          alert('Reinstall failed: ' + data.message);
+          document.getElementById('update-warning').style.display = 'none';
           stopPolling();
         }
       })
       .catch(error => {
         console.error('Reinstall error:', error);
-        stopPolling();
+        // Don't stop polling on error during download - device may still be updating
       });
+    }
+    
+    // Test function to verify API communication
+    function testAPICall() {
+      console.log('=== TEST API CALL ===');
+      console.log('Calling /api/update/status...');
+      fetch('/api/update/status')
+        .then(response => {
+          console.log('Status code:', response.status);
+          return response.json();
+        })
+        .then(data => {
+          console.log('API Response:', data);
+          alert('API test successful! Check console for details.');
+        })
+        .catch(error => {
+          console.error('API test failed:', error);
+          alert('API test failed! Check console for error.');
+        });
     }
     
     // Initial load - check once on page open

@@ -32,18 +32,18 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026-1.0.11"
-#define FILESYSTEM_VERSION "fs-2026-1.0.11"
+#define FIRMWARE_VERSION "fw-2026.1.1.00"
+#define FILESYSTEM_VERSION "fs-2026.1.1.00"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
 // ============================================================================
 // HARDWARE CONFIGURATION
 // ============================================================================
-// OLED Display (SSD1306)
+// OLED Display (SSD1306) - XIAO S3
 #define OLED_I2C_ADDRESS 0x3c
-#define OLED_SDA_PIN 5
-#define OLED_SCL_PIN 4
+#define OLED_SDA_PIN 6   // GPIO6 on XIAO S3 (D5)
+#define OLED_SCL_PIN 7   // GPIO7 on XIAO S3 (D6)
 
 // ============================================================================
 // NETWORK CONFIGURATION

@@ -12,7 +12,6 @@ GitHubUpdater::GitHubUpdater(Preferences& prefs, SSD1306& disp)
   : preferences(prefs), display(disp) {
   updateInfo.state = UPDATE_IDLE;
   updateInfo.downloadProgress = 0;
-  updateInfo.filesystemUpdateDone = false;
 }
 
 UpdateInfo& GitHubUpdater::getUpdateInfo() {
@@ -41,7 +40,6 @@ bool GitHubUpdater::compareVersions(String remoteVer, String currentVer) {
 void GitHubUpdater::saveUpdateInfo() {
   preferences.begin(NVS_NAMESPACE_OTA, false);
   preferences.putString("remoteVer", updateInfo.remoteVersion);
-  preferences.putString("remoteLFS", updateInfo.remoteLittlefsVersion);
   preferences.putString("fwUrl", updateInfo.firmwareUrl);
   preferences.putString("fsUrl", updateInfo.littlefsUrl);
   preferences.putULong("lastCheck", updateInfo.lastCheck);
@@ -54,7 +52,6 @@ void GitHubUpdater::saveUpdateInfo() {
 void GitHubUpdater::loadUpdateInfo() {
   preferences.begin(NVS_NAMESPACE_OTA, true);
   updateInfo.remoteVersion = preferences.getString("remoteVer", "");
-  updateInfo.remoteLittlefsVersion = preferences.getString("remoteLFS", "");
   updateInfo.firmwareUrl = preferences.getString("fwUrl", "");
   updateInfo.littlefsUrl = preferences.getString("fsUrl", "");
   updateInfo.lastCheck = preferences.getULong("lastCheck", 0);
@@ -179,6 +176,8 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     return false;
   }
   
+  Serial.println(">>> DISPLAYING 'Updating FW' on OLED <<<");
+  display.normalDisplay();  // Ensure normal mode
   display.clear();
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 0, "Updating FW");
@@ -186,6 +185,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   display.drawString(0, 30, "Please Wait...");
   display.drawString(0, 45, "DO NOT POWER OFF");
   display.display();
+  Serial.println(">>> OLED display() called <<<");
   
   updateInfo.state = UPDATE_DOWNLOADING;
   updateInfo.downloadProgress = 0;
@@ -300,12 +300,15 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   updateInfo.state = UPDATE_SUCCESS;
   updateInfo.downloadProgress = 100;
   
+  Serial.println(">>> DISPLAYING 'Update done / Rebooting...' on OLED <<<");
   display.clear();
+  // Keep normal display - no invertDisplay() for OTA updates
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 15, "Update done");
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 40, "Rebooting...");
   display.display();
+  Serial.println(">>> OLED display() called (normal white-on-black) <<<");
   
   String newVersion = updateInfo.remoteVersion;
   if (newVersion.startsWith("fw-")) {
@@ -324,6 +327,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     return false;
   }
   
+  display.normalDisplay();  // Ensure normal mode
   display.clear();
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 0, "Updating FS");
@@ -449,12 +453,15 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   updateInfo.state = UPDATE_SUCCESS;
   updateInfo.downloadProgress = 100;
   
+  Serial.println(">>> DISPLAYING 'Update done / Rebooting...' on OLED (LittleFS) <<<");
   display.clear();
+  // Keep normal display - no invertDisplay() for OTA updates
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 15, "Update done");
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 40, "Rebooting...");
   display.display();
+  Serial.println(">>> OLED display() called (normal white-on-black) <<<");
   
   String newVersion = updateInfo.remoteVersion;
   if (newVersion.startsWith("fw-")) {
@@ -464,4 +471,145 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   settings.updateVersions();
   
   return true;
+}
+
+// =============================================================================
+// API HANDLER METHODS
+// =============================================================================
+
+String GitHubUpdater::handleStatusRequest(const String& currentFwVer, const String& currentFsVer,
+                                         bool updatesEnabled, bool debugEnabled, bool hasToken) {
+  JsonDocument doc;
+  
+  doc["currentFirmwareVersion"] = currentFwVer;
+  doc["currentFilesystemVersion"] = currentFsVer;
+  doc["updatesEnabled"] = updatesEnabled;
+  doc["debugEnabled"] = debugEnabled;
+  doc["hasGithubToken"] = hasToken;
+  doc["remoteVersion"] = updateInfo.remoteVersion;
+  doc["state"] = updateInfo.state;
+  doc["firmwareAvailable"] = updateInfo.firmwareAvailable;
+  doc["littlefsAvailable"] = updateInfo.littlefsAvailable;
+  doc["availableFirmwareVersion"] = updateInfo.remoteVersion;
+  doc["availableFilesystemVersion"] = updateInfo.remoteVersion;
+  doc["lastCheck"] = updateInfo.lastCheck;
+  doc["lastError"] = updateInfo.lastError;
+  doc["downloadProgress"] = updateInfo.downloadProgress;
+  
+  String response;
+  serializeJson(doc, response);
+  return response;
+}
+
+String GitHubUpdater::handleCheckRequest(const String& updateUrl, const String& githubToken,
+                                        const String& currentFwVer, const String& currentFsVer) {
+  Serial.println("=== UPDATE CHECK REQUESTED ===");
+  bool success = checkGitHubRelease(updateUrl, githubToken, currentFwVer, currentFsVer);
+  
+  JsonDocument doc;
+  doc["success"] = success;
+  doc["message"] = success ? "Check completed" : "Check failed";
+  doc["updateAvailable"] = updateInfo.firmwareAvailable || updateInfo.littlefsAvailable;
+  
+  String response;
+  serializeJson(doc, response);
+  return response;
+}
+
+String GitHubUpdater::handleInstallRequest(const String& type, const String& githubToken,
+                                          String& currentFwVer, String& currentFsVer,
+                                          bool& shouldReboot) {
+  Serial.println("=== UPDATE INSTALL REQUESTED ===");
+  Serial.println("Install type: " + type);
+  Serial.println("Firmware available: " + String(updateInfo.firmwareAvailable));
+  Serial.println("LittleFS available: " + String(updateInfo.littlefsAvailable));
+  
+  bool success = false;
+  String message = "";
+  
+  if (type == "firmware" && updateInfo.firmwareAvailable) {
+    Serial.println("Starting firmware download...");
+    success = downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFwVer);
+    message = success ? "Firmware installed" : "Firmware install failed";
+  } else if (type == "littlefs" && updateInfo.littlefsAvailable) {
+    Serial.println("Starting LittleFS download...");
+    success = downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFsVer);
+    message = success ? "LittleFS installed" : "LittleFS install failed";
+  } else if (type == "both") {
+    if (updateInfo.firmwareAvailable) {
+      success = downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFwVer);
+      if (!success) {
+        message = "Firmware install failed";
+      }
+    }
+    if (success && updateInfo.littlefsAvailable) {
+      success = downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFsVer);
+      message = success ? "Both installed" : "LittleFS install failed";
+    } else if (success) {
+      message = "Firmware installed";
+    }
+  } else {
+    message = "No updates available";
+  }
+  
+  shouldReboot = success;
+  
+  JsonDocument doc;
+  doc["success"] = success;
+  doc["message"] = message;
+  doc["rebootRequired"] = success;
+  
+  String response;
+  serializeJson(doc, response);
+  return response;
+}
+
+String GitHubUpdater::handleReinstallRequest(const String& type, const String& githubToken,
+                                            String& currentFwVer, String& currentFsVer,
+                                            bool debugEnabled, bool& shouldReboot) {
+  Serial.println("=== REINSTALL REQUESTED ===");
+  
+  if (!debugEnabled) {
+    shouldReboot = false;
+    return "{\"success\":false,\"message\":\"Debug mode required\"}";
+  }
+  
+  Serial.println("Reinstall type: " + type);
+  
+  bool success = false;
+  String message = "";
+  
+  if (type == "firmware" && !updateInfo.firmwareUrl.isEmpty()) {
+    success = downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFwVer);
+    message = success ? "Firmware update successful!" : "Firmware update failed";
+  } else if (type == "littlefs" && !updateInfo.littlefsUrl.isEmpty()) {
+    success = downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFsVer);
+    message = success ? "Filesystem update successful!" : "Filesystem update failed";
+  } else if (type == "both") {
+    if (!updateInfo.firmwareUrl.isEmpty()) {
+      success = downloadAndInstallFirmware(updateInfo.firmwareUrl, githubToken, currentFwVer);
+      if (!success) {
+        message = "Firmware update failed";
+      }
+    }
+    if (success && !updateInfo.littlefsUrl.isEmpty()) {
+      success = downloadAndInstallLittleFS(updateInfo.littlefsUrl, githubToken, currentFsVer);
+      message = success ? "Firmware update successful!" : "Filesystem update failed";
+    } else if (success) {
+      message = "Firmware update successful!";
+    }
+  } else {
+    message = "No update URLs available. Check for updates first.";
+  }
+  
+  shouldReboot = success;
+  
+  JsonDocument doc;
+  doc["success"] = success;
+  doc["message"] = message;
+  doc["rebootRequired"] = success;
+  
+  String response;
+  serializeJson(doc, response);
+  return response;
 }

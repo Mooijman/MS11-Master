@@ -4,6 +4,7 @@
     <meta charset='UTF-8'>
     <title>Settings</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="5;url=/index.html">
     <link rel="icon" href="favicon.png">
     <link rel="stylesheet" type="text/css" href="style.css">
 </head>
@@ -14,9 +15,11 @@
     <div class="content">
         <div class="card-grid">
             <div class="card">
-                <h1><img src='hex100.png' alt='' class='icon-inline'>Settings</h1>
-                <p class="%MESSAGE_CLASS% text-left text-italic">%MESSAGE%</p>
-                <hr class="hr-divider">
+                <h1><img src='hex100.png' alt='' class='icon-inline'>Firmware Update</h1>
+                <div class="reboot-warning-box">
+                    <p class="reboot-warning-text">%MESSAGE%</p>
+                    <p class="reboot-warning-text-spacing">Page will refresh automatically...</p>
+                </div>
                 %RELOAD_BUTTON%
             </div>
         </div>

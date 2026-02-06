@@ -20,7 +20,6 @@ enum UpdateState {
 struct UpdateInfo {
   UpdateState state;
   String remoteVersion;
-  String remoteLittlefsVersion;
   String firmwareUrl;
   String littlefsUrl;
   bool firmwareAvailable;
@@ -28,7 +27,6 @@ struct UpdateInfo {
   unsigned long lastCheck;
   String lastError;
   int downloadProgress;
-  bool filesystemUpdateDone;
 };
 
 class GitHubUpdater {
@@ -52,6 +50,18 @@ public:
                                  String& currentFwVersion);
   bool downloadAndInstallLittleFS(String url, const String& githubToken,
                                  String& currentFsVersion);
+  
+  // API handlers - return JSON response strings
+  String handleStatusRequest(const String& currentFwVer, const String& currentFsVer,
+                            bool updatesEnabled, bool debugEnabled, bool hasToken);
+  String handleCheckRequest(const String& updateUrl, const String& githubToken,
+                           const String& currentFwVer, const String& currentFsVer);
+  String handleInstallRequest(const String& type, const String& githubToken,
+                             String& currentFwVer, String& currentFsVer,
+                             bool& shouldReboot);
+  String handleReinstallRequest(const String& type, const String& githubToken,
+                               String& currentFwVer, String& currentFsVer,
+                               bool debugEnabled, bool& shouldReboot);
 
 private:
   UpdateInfo updateInfo;

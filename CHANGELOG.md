@@ -2,6 +2,96 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.00] - 2026-02-06
+
+### Added
+- **XIAO ESP32-S3 Optimization**: Complete hardware optimization for Seeed Studio XIAO ESP32-S3
+  - Board configuration: `seeed_xiao_esp32s3` with 921600 baud upload speed
+  - Optimized partition table: `partitions_xiao_s3.csv` (1.9MB × 2 OTA + 64KB LittleFS)
+  - GPIO pin update: I2C on GPIO6 (SDA/D5) and GPIO7 (SCL/D6)
+  - Documentation: XIAO_S3_SETUP.md with complete implementation guide
+
+### Changed
+- **platformio.ini**: Board changed to `seeed_xiao_esp32s3`, upload speed to 921600
+- **README.md**: Updated hardware specifications for XIAO S3 with pinout table
+- **MIGRATION.md**: Added comprehensive XIAO S3 optimization section with DevKitC-1 comparison
+- **Version format**: Changed to dotted format `2026.1.1.00` for better semantic versioning
+
+### Technical Details
+- Build time: 16.37s (clean build)
+- Firmware: 1,308,108 bytes (64.4% of 2MB OTA partition)
+- RAM: 51,532 bytes (15.7%)
+- Hardware: XIAO ESP32-S3 @ 240MHz, 320KB RAM, 8MB Flash
+- Backwards compatible: DevKitC-1 partition backup as `partitions_esp32s3_devkit.csv`
+
+## [2026-1.0.14] - 2026-02-06
+
+### Changed
+- **Code Cleanup**: Verwijderde overbodige code uit main.cpp en github_updater.cpp
+  - Verwijderd uit main.cpp (10 regels):
+    - Ongebruikte background update variabelen (`lastBackgroundCheck`, `checksToday`, `dayStartTime`)
+    - Dubbele version tracking aliases (`storedFirmwareVersion`, `storedFilesystemVersion`)
+  - Verwijderd uit github_updater.cpp (9 regels):
+    - `remoteLittlefsVersion` uit UpdateInfo struct (ongebruikt veld)
+    - `filesystemUpdateDone` uit UpdateInfo struct (legacy veld)
+- **Reinstall messages**: Gebruikt nu dezelfde success messages als normale updates
+  - "Reinstall Successful!" → "Firmware update successful!"
+  - Groene succespagina consistent tussen install en reinstall
+
+### Technical Details
+- Firmware: 1,349,968 bytes (82.4% flash) - 264 bytes kleiner
+- RAM: 53,632 bytes (16.4%)
+- Totaal verwijderd: ~19 regels overbodige code
+- Release binaries: `release/2026-1.0.14/`
+
+## [2026-1.0.13] - 2026-02-06
+
+### Added
+- **Code Modularisatie - Fase 2**: GitHub update logica volledig gescheiden
+  - **`include/github_updater.h` & `src/github_updater.cpp`**: API handler methods
+    - `handleStatusRequest()` - Returns JSON for /api/update/status
+    - `handleCheckRequest()` - Returns JSON for /api/update/check
+    - `handleInstallRequest()` - Returns JSON for /api/update/install
+    - `handleReinstallRequest()` - Returns JSON for /api/update/reinstall
+
+### Changed
+- **API endpoints refactored**: Main.cpp bevat nu alleen web server logica
+  - `/api/update/status`: 30 → 10 regels (67% reductie)
+  - `/api/update/check`: 15 → 7 regels (53% reductie)
+  - `/api/update/install`: 100 → 20 regels (80% reductie)
+  - `/api/update/reinstall`: 120 → 25 regels (79% reductie)
+  - Totaal: ~220 regels verwijderd uit main.cpp
+
+### Technical Details
+- Firmware: 1,350,276 bytes (82.4% flash)
+- RAM: 53,632 bytes (16.4%)
+- Clean separation: Web server (main.cpp) vs Business logic (github_updater.cpp)
+- Release binaries: `release/2026-1.0.13/`
+
+## [2026-1.0.12] - 2026-02-05
+
+### Fixed
+- **CRITICAL**: GitHub update flow werkt nu perfect
+  - Direct redirect naar success pagina na download compleet
+  - Geen ERR_CONNECTION_RESET errors meer
+  - Geen "Failed to fetch" errors meer
+
+### Changed
+- **Update flow optimalisatie**:
+  - Redirect gebeurt bij ontvangst van JSON response met `rebootRequired:true`
+  - Verwijderd: Reboot detection via connection errors (veroorzaakte 12s delay)
+  - JavaScript polling verhoogd naar 500ms (was 2000ms) voor snellere updates
+- **UI Styling updates**:
+  - Success box: Geel → Groen (#d4edda background, #28a745 border)
+  - Success tekst: Zwart → Groen (#2e7d32, bold)
+  - Toegevoegd: ✅ emoji voor success message
+  - Titel: "Update Successful!" → "Firmware Update" (consistent)
+
+### Technical Details
+- Firmware: 1,353,276 bytes (82.6% flash)
+- Smooth user experience: red warning → green success → auto home
+- Release binaries: `release/2026-1.0.12/`
+
 ## [2026-1.0.06] - 2026-02-05
 
 ### Added

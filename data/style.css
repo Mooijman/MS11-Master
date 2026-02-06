@@ -983,8 +983,8 @@ a#gpioViewerBtn:hover {
 .reboot-warning-box {
   margin-top: var(--spacing-3xl);
   padding: var(--spacing-2xl);
-  background-color: var(--color-bg-warning);
-  border: 1px solid var(--color-warning);
+  background-color: #d4edda;
+  border: 1px solid #28a745;
   border-radius: var(--border-radius-sm);
 }
 
@@ -996,9 +996,18 @@ a#gpioViewerBtn:hover {
   border-radius: var(--border-radius-sm);
 }
 
+.update-success-box {
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-2xl);
+  background-color: #e8f5e9;
+  border: 1px solid #4caf50;
+  border-radius: var(--border-radius-sm);
+}
+
 .reboot-warning-text {
   margin: 0;
-  color: var(--color-text-warning);
+  color: #2e7d32;
+  font-weight: bold;
 }
 
 .update-warning-text {
@@ -1006,9 +1015,15 @@ a#gpioViewerBtn:hover {
   color: #c62828;
 }
 
+.update-success-text {
+  margin: 0;
+  color: #2e7d32;
+  font-weight: bold;
+}
+
 .reboot-warning-text-spacing {
   margin: var(--spacing-lg) 0 0 0;
-  color: var(--color-text-warning);
+  color: #2e7d32;
 }
 
 .update-warning-text-spacing {
