@@ -49,25 +49,51 @@ Bij het maken van een nieuwe GitHub release:
 - **Release title**: Beschrijving van de release
 - **Binary files**: `fw-YYYY-M.0.NN.bin` en `fs-YYYY-M.0.NN.bin`
 
-### Procedure
+### Procedure (Automated via GitHub CLI)
 ```bash
-# Na compilatie en testen (now on S3):
-mkdir -p release/YYYY-M.0.NN
-cp .pio/build/esp32s3dev/firmware.bin release/YYYY-M.0.NN/fw-YYYY-M.0.NN.bin
-cp .pio/build/esp32s3dev/littlefs.bin release/YYYY-M.0.NN/fs-YYYY-M.0.NN.bin
+# 1. Bump versie in include/config.h
+# Update FIRMWARE_VERSION en FILESYSTEM_VERSION naar nieuwe versie
 
-# Git commit en tag
+# 2. Build binaries
+pio run -e esp32s3dev          # Build firmware
+pio run -e esp32s3dev -t buildfs  # Build filesystem
+
+# 3. Maak release directory en kopieer binaries
+mkdir -p release/YYYY.M.m.pp
+cp .pio/build/esp32s3dev/firmware.bin release/YYYY.M.m.pp/fw-YYYY.M.m.pp.bin
+cp .pio/build/esp32s3dev/littlefs.bin release/YYYY.M.m.pp/fs-YYYY.M.m.pp.bin
+
+# 4. Update CHANGELOG.md
+# Voeg nieuwe versie sectie toe bovenaan met Added/Changed/Fixed
+
+# 5. Commit, tag en push
 git add -A
-git commit -m "v[YYYY-M.0.NN]: Release description"
-git tag YYYY-M.0.NN        # WITHOUT v prefix!
-git push && git push origin YYYY-M.0.NN
+git commit -m "vYYYY.M.m.pp: Release description"
+git tag YYYY.M.m.pp        # WITHOUT v prefix!
+git push && git push origin YYYY.M.m.pp
 
-# GitHub Release
-# 1. Ga naar https://github.com/Mooijman/ESP32-baseline/releases/new
-# 2. Select tag: YYYY-M.0.NN (without v)
-# 3. Upload fw-YYYY-M.0.NN.bin en fs-YYYY-M.0.NN.bin
-# 4. Publish
+# 6. Maak GitHub release via CLI
+printf '%s\n' \
+  '### Added' \
+  '- Feature 1' \
+  '- Feature 2' \
+  '' \
+  '### Technical Details' \
+  '- Firmware: X bytes (Y%% of 1.92MB OTA partition)' \
+  '- RAM: X bytes (Y%%)' \
+  '- Filesystem: 512KB' \
+| gh release create YYYY.M.m.pp \
+  release/YYYY.M.m.pp/fw-YYYY.M.m.pp.bin \
+  release/YYYY.M.m.pp/fs-YYYY.M.m.pp.bin \
+  --title "YYYY.M.m.pp - Short description" \
+  --notes-file -
 ```
+
+**Voordelen GitHub CLI aanpak**:
+- Volledig geautomatiseerd (geen handmatige web UI)
+- Release notes via stdin (geen temp files nodig)
+- Binaries worden automatisch geüpload
+- Direct verificatie via response URL
 
 **Reden**: 
 - Consistency met semantic versioning (tag names zonder v prefix)
