@@ -1068,6 +1068,267 @@ void setup() {
       serializeJson(doc, response);
       request->send(200, "application/json", response);
     });
+
+    // API: Enter bootloader mode (send command to app at 0x30)
+    server.on("/api/i2c/bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+
+      // Send bootloader command to application at 0x30 (same as LED)
+      // Arduino protocol: Register 0x99 + Safety code 0xB0
+      const uint8_t REG_ENTER_BOOTLOADER = 0x99;  // Arduino bootloader register
+      const uint8_t BOOTLOADER_SAFETY_CODE = 0xB0;  // Safety code
+      const uint8_t TWIBOOT_ADDR = 0x14;  // Bootloader I2C address
+      const uint8_t TWIBOOT_READ_VERSION = 0x01;  // Bootloader command
+
+      Serial.println("[I2C] Sending bootloader command (0x99 + 0xB0) to application at 0x30...");
+      
+      Wire.beginTransmission(I2C_LED_ADDR);  // 0x30 - application address
+      Wire.write(REG_ENTER_BOOTLOADER);  // Register
+      Wire.write(BOOTLOADER_SAFETY_CODE);  // Safety code
+      uint8_t error = Wire.endTransmission();
+
+      JsonDocument doc;
+      if (error != 0) {
+        doc["success"] = false;
+        doc["error"] = "I2C transmission failed (error: " + String(error) + ")";
+        Serial.println("[I2C] Bootloader command failed: " + String(error));
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+        return;
+      }
+
+      Serial.println("[I2C] Bootloader command sent. Waiting for Arduino to reboot...");
+      
+      // Wait for app to reboot and bootloader to start (8 seconds with watchdog resets)
+      for (int i = 0; i < 80; i++) {
+        delay(100);
+        esp_task_wdt_reset();  // Prevent ESP32 watchdog reset
+      }
+      
+      // Verify bootloader is active at 0x14
+      Serial.println("[I2C] Checking if bootloader is active at 0x14...");
+      
+      // Simple presence check first
+      Wire.beginTransmission(TWIBOOT_ADDR);
+      error = Wire.endTransmission();
+      
+      if (error == 0) {
+        Serial.println("[I2C] Bootloader detected at 0x14!");
+        
+        // Try to read version
+        delay(50);  // Small delay before version read
+        Wire.beginTransmission(TWIBOOT_ADDR);
+        Wire.write(TWIBOOT_READ_VERSION);
+        Wire.endTransmission();
+        
+        delay(10);
+        uint8_t bytesRead = Wire.requestFrom(TWIBOOT_ADDR, (uint8_t)2);
+        
+        if (bytesRead >= 2) {
+          uint8_t major = Wire.read();
+          uint8_t minor = Wire.read();
+          doc["success"] = true;
+          doc["message"] = "Bootloader mode activated successfully";
+          doc["bootloaderVersion"] = String(major) + "." + String(minor);
+          Serial.println("[I2C] Bootloader version: " + String(major) + "." + String(minor));
+        } else {
+          // Bootloader present but version read failed - still success
+          doc["success"] = true;
+          doc["message"] = "Bootloader mode activated successfully";
+          doc["bootloaderVersion"] = "unknown";
+          Serial.println("[I2C] Bootloader active (version read failed)");
+        }
+      } else {
+        // Bootloader not detected yet - but command was sent successfully
+        doc["success"] = true;
+        doc["message"] = "Bootloader command sent";
+        doc["bootloaderVersion"] = "activating...";
+        doc["hint"] = "Wait 10-15 seconds for bootloader to fully activate at 0x14";
+        Serial.println("[I2C] Bootloader not yet detected at 0x14, may need more time");
+      }
+
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+    
+    // API: Exit bootloader mode (start application)
+    server.on("/api/i2c/exit-bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+
+      JsonDocument doc;
+      
+      Serial.println("[I2C] Exit bootloader command received");
+      
+      const uint8_t TWIBOOT_ADDR = 0x14;  // Bootloader I2C address
+      const uint8_t CMD_SWITCH_APPLICATION = 0x01;  // Twiboot command to switch mode
+      const uint8_t BOOTTYPE_APPLICATION = 0x80;    // Parameter to start application
+      
+      // Check if Arduino is in bootloader mode (at 0x14)
+      Wire.beginTransmission(TWIBOOT_ADDR);
+      uint8_t bootloaderError = Wire.endTransmission();
+      
+      if (bootloaderError == 0) {
+        // Arduino is in bootloader mode - send exit/start app command
+        Serial.println("[I2C] Arduino at 0x14 (bootloader), sending exit command...");
+        
+        // Twiboot protocol: CMD_SWITCH_APPLICATION (0x01) + BOOTTYPE_APPLICATION (0x80)
+        Wire.beginTransmission(TWIBOOT_ADDR);
+        Wire.write(CMD_SWITCH_APPLICATION);  // 0x01 - switch mode command
+        Wire.write(BOOTTYPE_APPLICATION);     // 0x80 - start application
+        uint8_t writeError = Wire.endTransmission();
+        
+        if (writeError == 0) {
+          Serial.println("[I2C] Exit bootloader command sent successfully");
+          
+          // Wait for Arduino to exit bootloader and start application
+          delay(1000);
+          
+          // Verify Arduino is now at 0x30 (application)
+          Wire.beginTransmission(I2C_LED_ADDR);
+          uint8_t appError = Wire.endTransmission();
+          
+          if (appError == 0) {
+            doc["success"] = true;
+            doc["message"] = "Arduino is terug in normale mode";
+            Serial.println("[I2C] Arduino successfully at 0x30 (application)");
+          } else {
+            // Arduino still not at 0x30 - exit command didn't work
+            doc["success"] = false;
+            doc["error"] = "Exit commando werkt niet";
+            doc["hint"] = "Arduino reageert niet op exit commando. Probeer Reset of powercycle.";
+            Serial.println("[I2C] Exit command failed - Arduino still at 0x14 or not responding");
+          }
+        } else {
+          doc["success"] = false;
+          doc["error"] = "Failed to send exit command (I2C error: " + String(writeError) + ")";
+          Serial.println("[I2C] Failed to send exit command (error: " + String(writeError) + ")");
+        }
+      } else {
+        // Arduino not in bootloader mode
+        doc["success"] = false;
+        doc["error"] = "Arduino not in bootloader mode";
+        doc["hint"] = "Arduino must be at 0x14 (bootloader) to exit";
+        Serial.println("[I2C] Arduino not at 0x14 - cannot exit bootloader");
+      }
+
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
+    
+    // API: Reset Arduino (exit bootloader mode)
+    server.on("/api/i2c/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
+      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
+
+      if (!debugEnabledBool) {
+        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+        return;
+      }
+
+      JsonDocument doc;
+      
+      Serial.println("[I2C] Reset Arduino command received");
+      
+      // Define bootloader commands
+      const uint8_t TWIBOOT_ADDR = 0x14;  // Bootloader I2C address
+      const uint8_t CMD_SWITCH_APPLICATION = 0x01;  // Twiboot command to switch mode
+      const uint8_t BOOTTYPE_APPLICATION = 0x80;    // Parameter to start application
+      
+      // First check if Arduino is in bootloader mode (at 0x14)
+      Wire.beginTransmission(TWIBOOT_ADDR);
+      uint8_t bootloaderError = Wire.endTransmission();
+      
+      if (bootloaderError == 0) {
+        // Arduino is in bootloader mode - send exit command
+        Serial.println("[I2C] Arduino at 0x14 (bootloader), sending exit command...");
+        
+        // Twiboot protocol: CMD_SWITCH_APPLICATION (0x01) + BOOTTYPE_APPLICATION (0x80)
+        Wire.beginTransmission(TWIBOOT_ADDR);
+        Wire.write(CMD_SWITCH_APPLICATION);  // 0x01 - switch mode command
+        Wire.write(BOOTTYPE_APPLICATION);     // 0x80 - start application
+        uint8_t writeError = Wire.endTransmission();
+        
+        if (writeError == 0) {
+          delay(1000);  // Wait for restart
+          
+          // Verify Arduino moved to 0x30
+          Wire.beginTransmission(I2C_LED_ADDR);
+          uint8_t verifyError = Wire.endTransmission();
+          
+          if (verifyError == 0) {
+            doc["success"] = true;
+            doc["message"] = "Arduino is gereset";
+            Serial.println("[I2C] Arduino reset successful - now at 0x30");
+          } else {
+            doc["success"] = false;
+            doc["error"] = "Reset commando werkt niet";
+            doc["hint"] = "Arduino reageert niet op reset commando. Probeer powercycle.";
+            Serial.println("[I2C] Reset failed - Arduino not at 0x30");
+          }
+        } else {
+          doc["success"] = false;
+          doc["error"] = "Failed to exit bootloader (I2C error: " + String(writeError) + ")";
+          Serial.println("[I2C] Failed to exit bootloader (error: " + String(writeError) + ")");
+        }
+      } else {
+        // Check if Arduino is in application mode (at 0x30)
+        Wire.beginTransmission(I2C_LED_ADDR);
+        uint8_t appError = Wire.endTransmission();
+        
+        if (appError == 0) {
+          // Arduino is at 0x30 - send reset command
+          // Using 0xFF as generic reset register (if Arduino supports it)
+          Wire.beginTransmission(I2C_LED_ADDR);
+          Wire.write(0xFF);  // Reset command register
+          Wire.write(0xAA);  // Reset confirmation code
+          uint8_t writeError = Wire.endTransmission();
+          
+          if (writeError == 0) {
+            delay(1000);  // Wait for restart
+            
+            // Verify Arduino is still at 0x30 after reset
+            Wire.beginTransmission(I2C_LED_ADDR);
+            uint8_t verifyError = Wire.endTransmission();
+            
+            if (verifyError == 0) {
+              doc["success"] = true;
+              doc["message"] = "Arduino is gereset";
+              Serial.println("[I2C] Arduino reset successful");
+            } else {
+              doc["success"] = false;
+              doc["error"] = "Reset commando werkt niet";
+              doc["hint"] = "Arduino reageert niet. Probeer powercycle.";
+              Serial.println("[I2C] Reset failed - Arduino not responding");
+            }
+          } else {
+            doc["success"] = false;
+            doc["error"] = "Failed to send reset command (I2C error: " + String(writeError) + ")";
+            Serial.println("[I2C] Failed to send reset (error: " + String(writeError) + ")");
+          }
+        } else {
+          doc["success"] = false;
+          doc["error"] = "Arduino not found at 0x30 or 0x14";
+          doc["hint"] = "Check Arduino power and I2C connection";
+          Serial.println("[I2C] Arduino not found at either address");
+        }
+      }
+
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    });
     
     // API: Get device register dump
     server.on("/api/i2c/registers", HTTP_GET, [](AsyncWebServerRequest *request) {

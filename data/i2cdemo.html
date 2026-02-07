@@ -31,6 +31,20 @@
           <div class="margin-bottom-20">
             <p class="text-left text-muted line-height-16">LED status: <span id="led-status">-</span></p>
           </div>
+
+          <hr class="hr-divider">
+
+          <div class="margin-bottom-20">
+            <div class="form-actions-right" style="gap: 10px;">
+              <button class="btn-small btn-danger" onclick="enterBootloaderMode()">Enter Bootloader</button>
+              <button class="btn-small btn-secondary" onclick="exitBootloaderMode()">Exit Bootloader</button>
+              <button class="btn-small btn-secondary" onclick="resetArduino()">Reset Arduino</button>
+            </div>
+          </div>
+
+          <div id="bootloader-status" class="margin-top-20 hidden">
+            <p class="text-left" id="bootloader-message"></p>
+          </div>
         </div>
       </div>
     </div>
@@ -54,6 +68,112 @@
         }
       })
       .catch(() => alert('I2C commando mislukt'));
+    }
+
+    function enterBootloaderMode() {
+      const statusDiv = document.getElementById('bootloader-status');
+      const messageEl = document.getElementById('bootloader-message');
+      
+      statusDiv.classList.remove('hidden');
+      messageEl.innerHTML = '<span style="color: #999;">Bootloader commando wordt verzonden...</span>';
+
+      fetch('/api/i2c/bootloader', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          let message = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>';
+          
+          // Check if bootloader is still activating
+          if (data.bootloaderVersion === 'activating...') {
+            message += '<span style="color: #856404; font-size: 12px; font-style: italic;">Arduino is aan het rebooten. ' +
+                      'Bootloader wordt actief op I2C adres 0x14 binnen enkele seconden.</span>';
+          } else {
+            message += '<span style="color: #999; font-size: 12px;">Arduino is nu in bootloader mode (I2C adres 0x14). ' +
+                      'Gebruik /twiboot voor firmware upload.</span>';
+            if (data.bootloaderVersion) {
+              message += '<br><span style="color: #666; font-size: 11px;">Bootloader versie: ' + data.bootloaderVersion + '</span>';
+            }
+          }
+          messageEl.innerHTML = message;
+        } else {
+          let errorMsg = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
+          if (data.hint) {
+            errorMsg += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
+          }
+          messageEl.innerHTML = errorMsg;
+        }
+      })
+      .catch(error => {
+        messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
+        console.error('Error:', error);
+      });
+    }
+
+    function exitBootloaderMode() {
+      const statusDiv = document.getElementById('bootloader-status');
+      const messageEl = document.getElementById('bootloader-message');
+      
+      statusDiv.classList.remove('hidden');
+      messageEl.innerHTML = '<span style="color: #999;">Exit bootloader commando wordt verzonden...</span>';
+
+      fetch('/api/i2c/exit-bootloader', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          let message = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
+                       '<span style="color: #999; font-size: 12px;">Arduino is terug in normale mode (I2C adres 0x30).</span>';
+          if (data.hint) {
+            message += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
+          }
+          messageEl.innerHTML = message;
+        } else {
+          let errorMsg = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
+          if (data.hint) {
+            errorMsg += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
+          }
+          messageEl.innerHTML = errorMsg;
+        }
+      })
+      .catch(error => {
+        messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
+        console.error('Error:', error);
+      });
+    }
+
+    function resetArduino() {
+      const statusDiv = document.getElementById('bootloader-status');
+      const messageEl = document.getElementById('bootloader-message');
+      
+      statusDiv.classList.remove('hidden');
+      messageEl.innerHTML = '<span style="color: #999;">Reset commando wordt verzonden...</span>';
+
+      fetch('/api/i2c/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
+                               '<span style="color: #999; font-size: 12px;">Arduino gereset. Controleer I2C verbinding op adres 0x30.</span>';
+        } else {
+          let errorMsg = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
+          if (data.hint) {
+            errorMsg += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
+          }
+          messageEl.innerHTML = errorMsg;
+        }
+      })
+      .catch(error => {
+        messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
+        console.error('Error:', error);
+      });
     }
   </script>
 </body>

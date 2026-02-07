@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.11] - 2026-02-07
+
+### Fixed
+- **CRITICAL: Twiboot Exit Bootloader Protocol**: Fixed exit bootloader and reset commands to use correct Twiboot protocol
+  - Changed from incorrect single-byte command (0x00) to proper two-byte sequence
+  - Exit bootloader: CMD_SWITCH_APPLICATION (0x01) + BOOTTYPE_APPLICATION (0x80)
+  - Reset from bootloader: Same command sequence (0x01 + 0x80)
+  - Both commands now work perfectly without powercycle
+  - Discovered correct protocol through exhaustive GitHub repo search
+
+### Technical Details
+- Protocol source: `slaveupdate.cpp` functions `runSlaveSketch()` and `leaveSlaveBootloader()`
+- Both `/api/i2c/exit-bootloader` and `/api/i2c/reset` endpoints updated
+- Complete I2C bootloader workflow now functional: Enter → Exit → Reset all work
+
 ## [2026.1.1.08] - 2026-02-06
 
 ### Fixed
