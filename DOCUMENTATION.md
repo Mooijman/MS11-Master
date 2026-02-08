@@ -1,4 +1,4 @@
-# 📋 Documentation Index - ESP32S3-Base Project
+# 📋 Documentation Index - MS11-Master Project
 
 **Project Version**: 2026.1.1.08  
 **Last Updated**: 6 February 2026  

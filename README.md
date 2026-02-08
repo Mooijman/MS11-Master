@@ -110,7 +110,7 @@ Versies volgen het format: `type-year-major.minor.patch`
 
 ### GitHub Release Maken
 
-1. Ga naar: https://github.com/Mooijman/ESP32S3-Baseline/releases/new
+1. Ga naar: https://github.com/Mooijman/MS11-Master/releases/new
 2. **Maak één release per versie** (tag zonder `v` prefix):
    - Tag: `2026.1.1.08` (of hogere versie)
 3. **Upload binaries** met vaste naming:
@@ -172,7 +172,7 @@ Via Settings pagina:
 - **Open** knop - open Updates pagina (alleen als updates enabled)
 
 Update URL wordt automatisch ingesteld op:
-`https://api.github.com/repos/Mooijman/ESP32S3-baseline/releases/latest`
+`https://api.github.com/repos/Mooijman/MS11-Master/releases/latest`
 
 ### ArduinoOTA (lokaal)
 

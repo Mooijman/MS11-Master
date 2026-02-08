@@ -1,16 +1,17 @@
-# Copilot Instructions (ESP32S3-Base)
+# Copilot Instructions (MS11-Master)
 
 ## Big picture
 - Single entrypoint: [src/main.cpp](../src/main.cpp) owns WiFi/AP mode, AsyncWebServer routes, OLED status, and the task loop (`handleDisplayTasks()`, `handleNetworkTasks()`, `handleSystemTasks()`).
 - Settings are a 3‑tier stack: compile‑time defaults in [include/config.h](../include/config.h) → NVS via `Settings` in [src/settings.cpp](../src/settings.cpp) → runtime `String&` aliases in [src/main.cpp](../src/main.cpp).
 - Data flow: UI/API change → `settings.save()` → NVS → reboot → `settings.load()` → UI/display updates.
 - GitHub OTA logic lives in [src/github_updater.cpp](../src/github_updater.cpp); its API handlers return JSON only (no redirects). UI behavior is driven by [data/update.html](../data/update.html).
+- **Hardware**: XIAO ESP32-S3 (Seeed Studio) - 8MB flash, 320KB RAM, GPIO6/7 for I2C (D5/D6), 921600 baud USB-C.
 
 ## Core modules
-- `Settings` ([include/settings.h](../include/settings.h), [src/settings.cpp](../src/settings.cpp)): NVS namespaces `config` + `ota`, version sync via `syncVersions()` on boot.
+- `Settings` ([include/settings.h](../include/settings.h), [src/settings.cpp](../src/settings.cpp)): NVS namespaces `config` + `ota`, version sync via `syncVersions()` on boot. Date/time storage with wear-limiting (NTP fallback, boot time tracking).
 - `WiFiManager` ([src/wifi_manager.cpp](../src/wifi_manager.cpp)): STA connect with DHCP/static IP; if connect fails, AP + captive portal starts in `main.cpp`.
-- `GitHubUpdater` ([include/github_updater.h](../include/github_updater.h), [src/github_updater.cpp](../src/github_updater.cpp)): version compare + download/install firmware/LittleFS.
-- `TwiBootUpdater` ([include/twi_boot_updater.h](../include/twi_boot_updater.h), [src/twi_boot_updater.cpp](../src/twi_boot_updater.cpp)): I2C-based bootloader for external ATmega chips; sends Intel HEX via I2C.
+- `GitHubUpdater` ([include/github_updater.h](../include/github_updater.h), [src/github_updater.cpp](../src/github_updater.cpp)): version compare + download/install firmware/LittleFS. API handlers return JSON; UI polling at 500ms for smooth updates.
+- `MD11SlaveUpdate` ([include/md11_slave_update.h](../include/md11_slave_update.h), [src/md11_slave_update.cpp](../src/md11_slave_update.cpp)): I2C-based bootloader for external ATmega chips; sends Intel HEX via I2C using 4-byte header protocol (CMD_ACCESS_MEMORY + MEMTYPE_FLASH). Exit bootloader: CMD_SWITCH_APPLICATION (0x01) + BOOTTYPE_APPLICATION (0x80).
 
 ## Project-specific conventions
 - String flags are stored as `"true"/"false"` or `"on"/"off"`; always normalize before comparisons (see DHCP handling in [src/main.cpp](../src/main.cpp)).
@@ -18,6 +19,7 @@
 - Debug OFF also disables GPIO Viewer + OTA for security (see settings POST handler in [src/main.cpp](../src/main.cpp)).
 - NTP date writes are wear‑limited (see `saveStoredDateIfNeeded()` in [src/settings.cpp](../src/settings.cpp)).
 - Boot time saved to NVS only when debug enabled + NTP synced (uses timezone from settings at boot time).
+- **I2C Bootloader Protocol**: Application at 0x30, Twiboot bootloader at 0x14 (after activation). Exit bootloader requires two-byte sequence: 0x01 + 0x80 (not single 0x00).
 
 ## Web UI patterns
 - HTML templates use `%VAR%` tokens replaced in `server.on("/settings", HTTP_GET)` in [src/main.cpp](../src/main.cpp).

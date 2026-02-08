@@ -1,10 +1,10 @@
-# Quick Reference Guide - ESP32S3-Base Project
+# Quick Reference Guide - MS11-Master Project
 
 **Last Updated**: 6 February 2026 | **Version**: 2026.1.1.08
 
 ## 📱 Project at a Glance
 
-ESP32-S3 IoT baseline with WiFi manager, OTA updates, web interface, NTP time sync, and timezone support.
+MS11-Master: ESP32-S3 IoT controller with WiFi manager, OTA updates, web interface, NTP time sync, and timezone support.
 
 - **Board**: XIAO ESP32-S3 (8MB flash, 320KB RAM)
 - **Status**: ✅ Production ready
@@ -16,7 +16,7 @@ ESP32-S3 IoT baseline with WiFi manager, OTA updates, web interface, NTP time sy
 ### Build & Upload
 ```bash
 # Navigate to project
-cd "/Users/jeroen/Library/Mobile Documents/com~apple~CloudDocs/PlatformIO/Projects/ESP32S3-Base"
+cd "/Users/jeroen/Library/Mobile Documents/com~apple~CloudDocs/PlatformIO/Projects/MS11/MS11-master"
 
 # Build firmware
 pio run -e esp32s3dev

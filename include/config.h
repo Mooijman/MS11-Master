@@ -103,7 +103,7 @@
 // DEFAULT SETTINGS
 // ============================================================================
 // Default GitHub release URL (can be changed via web interface)
-#define DEFAULT_UPDATE_URL "https://api.github.com/repos/Mooijman/ESP32S3-baseline/releases/latest"
+#define DEFAULT_UPDATE_URL "https://api.github.com/repos/Mooijman/MS11-Master/releases/latest"
 
 // Default feature states (security-conscious defaults)
 #define DEFAULT_DEBUG_ENABLED false

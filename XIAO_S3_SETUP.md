@@ -5,7 +5,7 @@
 
 ## Overview
 
-The ESP32S3-Base project has been optimized and finalized for the **Seeed Studio XIAO ESP32-S3**, a compact, high-performance microcontroller module. This represents the third and final phase of hardware evolution:
+The MS11-Master project has been optimized and finalized for the **Seeed Studio XIAO ESP32-S3**, a compact, high-performance microcontroller module. This represents the third and final phase of hardware evolution:
 
 ```
 ESP32-WROOM (Phase 1)

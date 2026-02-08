@@ -1,12 +1,12 @@
-#ifndef TWI_BOOT_UPDATER_H
-#define TWI_BOOT_UPDATER_H
+#ifndef MD11_SLAVE_UPDATE_H
+#define MD11_SLAVE_UPDATE_H
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <vector>
 
 // Twiboot bootloader I2C address (slave)
-#define TWIBOOT_I2C_ADDR 0x29
+#define TWIBOOT_I2C_ADDR 0x14
 
 // Application I2C address (activates bootloader)
 #define APP_I2C_ADDR 0x30
@@ -32,9 +32,9 @@ enum TwiBootStatus {
   BOOT_ERROR = 0xFF
 };
 
-class TwiBootUpdater {
+class MD11SlaveUpdate {
 public:
-  TwiBootUpdater();
+  MD11SlaveUpdate();
   
   // Request app to enter bootloader mode
   bool requestBootloaderMode();
@@ -47,6 +47,9 @@ public:
   
   // Upload Intel HEX firmware file
   bool uploadHexFile(const String& hexContent, void (*progressCallback)(int percent) = nullptr);
+  
+  // Write full 128-byte flash page (in 16-byte chunks)
+  bool writeFlashPage(uint16_t pageAddress, const uint8_t* pageData, uint16_t pageSize);
   
   // Write memory via bootloader (for testing)
   bool writeMemory(uint16_t address, const uint8_t* data, uint16_t length);
@@ -78,4 +81,4 @@ private:
   uint8_t calculateHexChecksum(const String& line);
 };
 
-#endif // TWI_BOOT_UPDATER_H
+#endif // MD11_SLAVE_UPDATE_H

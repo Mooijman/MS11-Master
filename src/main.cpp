@@ -21,7 +21,7 @@
 #include "settings.h"
 #include "github_updater.h"
 #include "wifi_manager.h"
-#include "twi_boot_updater.h"
+#include "md11_slave_update.h"
 
 // Global instances
 Preferences preferences;
@@ -38,8 +38,8 @@ GitHubUpdater* githubUpdater = nullptr;
 // WiFi manager instance
 WiFiManager* wifiManager = nullptr;
 
-// Twiboot updater instance
-TwiBootUpdater* twibootUpdater = nullptr;
+// MD11 Slave updater instance
+MD11SlaveUpdate* md11SlaveUpdater = nullptr;
 
 // Create AsyncWebServer object
 AsyncWebServer server(WEB_SERVER_PORT);
@@ -217,8 +217,8 @@ void setup() {
   githubUpdater = new GitHubUpdater(preferences, display);
   githubUpdater->loadUpdateInfo();
   
-  // Initialize Twiboot updater
-  twibootUpdater = new TwiBootUpdater();
+  // Initialize MD11 Slave updater
+  md11SlaveUpdater = new MD11SlaveUpdate();
   
   Serial.println("OTA Update System Initialized");
   Serial.println("Firmware Version: " + currentFirmwareVersion);
@@ -799,29 +799,19 @@ void setup() {
       request->send(LittleFS, "/i2cdemo.html", "text/html");
     });
     
-    // Twiboot update page
-    server.on("/twiboot", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/twiboot.html", "text/html");
-    });
-    
     // API: Get Twiboot bootloader status
     server.on("/api/twi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       JsonDocument doc;
       
-      // Query bootloader version
+      // Query bootloader version only (don't query signature - it may kick out of bootloader)
       String version = "-";
-      uint8_t sig0 = 0, sig1 = 0, sig2 = 0;
       
-      if (twibootUpdater) {
-        if (twibootUpdater->queryBootloaderVersion(version)) {
+      if (md11SlaveUpdater) {
+        if (md11SlaveUpdater->queryBootloaderVersion(version)) {
           doc["connected"] = true;
           doc["version"] = version;
-          
-          if (twibootUpdater->queryChipSignature(sig0, sig1, sig2)) {
-            char sigStr[20];
-            snprintf(sigStr, sizeof(sigStr), "%02X %02X %02X", sig0, sig1, sig2);
-            doc["signature"] = String(sigStr);
-          }
+          // Hardcode signature for ATmega328P instead of querying
+          doc["signature"] = "1E 95 0F";  // ATmega328P signature
         } else {
           doc["connected"] = false;
         }
@@ -835,30 +825,57 @@ void setup() {
     });
     
     // API: Upload hex file to bootloader
-    server.on("/api/twi/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-      Serial.println("[Twiboot API] Upload request received");
-      
-      if (!twibootUpdater) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Twiboot not initialized\"}");
-        return;
-      }
-      
-      // This will be handled by onBody
-      request->send(200, "application/json", "{\"success\":true,\"message\":\"Upload started\"}");
-    }, nullptr, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-      // Parse JSON body with hex content
-      if (index == 0) {
-        // Parse JSON
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, (const char*)data);
+    server.on("/api/twi/upload", HTTP_POST, 
+      [](AsyncWebServerRequest *request) {}, 
+      nullptr, 
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        // Accumulate data in chunks
+        static String uploadBuffer;
         
-        if (error) {
-          Serial.println("[Twiboot API] JSON parse error");
-          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        // First chunk - reset buffer
+        if (index == 0) {
+          uploadBuffer = "";
+          uploadBuffer.reserve(total + 1);
+          Serial.println("[Twiboot API] Upload started, total size: " + String(total) + " bytes");
+        }
+        
+        // Append chunk to buffer
+        for (size_t i = 0; i < len; i++) {
+          uploadBuffer += (char)data[i];
+        }
+        
+        Serial.printf("[Twiboot API] Received chunk: %d/%d bytes (%.1f%%)\n", 
+                     index + len, total, ((index + len) * 100.0) / total);
+        
+        // Only process when we have all data
+        if (index + len != total) {
           return;
         }
         
-        String hexContent = doc["hexContent"];
+        Serial.println("[Twiboot API] All data received, processing...");
+        
+        if (!md11SlaveUpdater) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"Twiboot not initialized\"}");
+          uploadBuffer = "";
+          return;
+        }
+        
+        // Parse JSON body with hex content
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, uploadBuffer);
+        
+        if (error) {
+          Serial.println("[Twiboot API] JSON parse error: " + String(error.c_str()));
+          Serial.println("[Twiboot API] Buffer length: " + String(uploadBuffer.length()));
+          Serial.println("[Twiboot API] First 100 chars: " + uploadBuffer.substring(0, 100));
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          uploadBuffer = "";
+          return;
+        }
+        
+        String hexContent = doc["hexContent"].as<String>();
+        uploadBuffer = "";  // Free memory
+        
         if (hexContent.length() == 0) {
           Serial.println("[Twiboot API] Empty hex content");
           request->send(400, "application/json", "{\"success\":false,\"error\":\"No hex content\"}");
@@ -867,20 +884,13 @@ void setup() {
         
         Serial.println("[Twiboot API] Hex content size: " + String(hexContent.length()) + " bytes");
         
-        // Request bootloader mode
-        if (!twibootUpdater->requestBootloaderMode()) {
-          String error = twibootUpdater->getLastError();
-          Serial.println("[Twiboot API] Bootloader activation failed: " + error);
-          request->send(500, "application/json", 
-            "{\"success\":false,\"error\":\"" + error + "\"}");
-          return;
-        }
-        
-        Serial.println("[Twiboot API] Bootloader activated, uploading firmware...");
+        // NOTE: Do NOT query bootloader version here - it may kick bootloader out of programming mode!
+        // User must click "Enter Bootloader" button first to activate bootloader.
+        Serial.println("[Twiboot API] Starting firmware upload (bootloader must already be active)...");
         
         // Upload hex file
-        if (!twibootUpdater->uploadHexFile(hexContent)) {
-          String error = twibootUpdater->getLastError();
+        if (!md11SlaveUpdater->uploadHexFile(hexContent)) {
+          String error = md11SlaveUpdater->getLastError();
           Serial.println("[Twiboot API] Upload failed: " + error);
           request->send(500, "application/json", 
             "{\"success\":false,\"error\":\"" + error + "\"}");
@@ -890,7 +900,7 @@ void setup() {
         Serial.println("[Twiboot API] Upload successful!");
         request->send(200, "application/json", "{\"success\":true,\"message\":\"Firmware updated\"}");
       }
-    });
+    );
     
     // Confirmation page with auto-refresh
     server.on("/confirm.html", HTTP_GET, [](AsyncWebServerRequest *request) {
