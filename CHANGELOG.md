@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.14] - 2026-02-09
+
+### Changed
+- **LCD Display Messages**: Updated text formatting for better readability
+  - Boot phase: `*MagicSmoker 11*` / `.**Starting...**` (with ending asterisks)
+  - WiFi connected: IP address on line 1, `Wifi OK!` on line 2
+  - WiFi Manager mode: `WiFi manager` on line 1, `ESP-WIFI-MGR` on line 2
+
 ## [2026.1.1.13] - 2026-02-09
 
 ### Fixed

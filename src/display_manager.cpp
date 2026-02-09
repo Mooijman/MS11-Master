@@ -1,7 +1,7 @@
 #include "display_manager.h"
 
 DisplayManager::DisplayManager() 
-  : display(DISPLAY_I2C_ADDRESS, 8, 9, GEOMETRY_128_64, I2C_TWO, 100000) {  // Bus 1 I2C (GPIO8/9 @ 100kHz)
+  : display(DISPLAY_I2C_ADDRESS, 8, 9, GEOMETRY_128_64, I2C_ONE, 100000) {  // Bus 0 I2C (GPIO8/9 @ 100kHz, Wire/I2C0)
 }
 
 DisplayManager::~DisplayManager() {

@@ -209,14 +209,21 @@ void setup() {
   }
   
   // Initialize LCD Manager (Bus 1: GPIO8/9, LCD @ 0x27)
+  Serial.println("\n=== Initializing LCD Manager ===");
+  Serial.println("Calling LCDManager::getInstance().begin()...");
   if (!LCDManager::getInstance().begin()) {
     Serial.println("WARNING: LCD 16x2 initialization failed - continuing anyway");
   } else {
     // Show startup message on LCD
+    Serial.println("LCD initialized successfully, showing startup message...");
     LCDManager::getInstance().clear();
+    delay(100);
     LCDManager::getInstance().printLine(0, "*MagicSmoker 11*");
-    LCDManager::getInstance().printLine(1, ".**   Starting...");
+    delay(100);
+    LCDManager::getInstance().printLine(1, ".**Starting...**");
+    Serial.println("Startup message sent to LCD");
   }
+  Serial.println("=== LCD Manager initialization complete ===\n");
   
   // Initialize Seesaw Rotary Encoder (Bus 1: GPIO8/9, Seesaw @ 0x36)
   if (!SeesawRotary::getInstance().begin()) {
@@ -302,7 +309,7 @@ void setup() {
     delay(100);  // Let render complete
     delay(1000);
     
-    // Show IP address + versions
+    // Show IP address + versions on OLED
     DisplayManager::getInstance().clear();
     DisplayManager::getInstance().setFont(ArialMT_Plain_10);
     DisplayManager::getInstance().drawString(0, 0, "IP: " + WiFi.localIP().toString());
@@ -310,6 +317,20 @@ void setup() {
     DisplayManager::getInstance().drawString(0, 28, "fw-" + currentFirmwareVersion);
     DisplayManager::getInstance().drawString(0, 42, "fs-" + currentFilesystemVersion);
     DisplayManager::getInstance().updateDisplay();
+    
+    // Show IP address on LCD (16x2 display)
+    Serial.println("Updating LCD with WiFi info...");
+    LCDManager::getInstance().clear();
+    delay(150);
+    String ipStr = WiFi.localIP().toString();
+    // Truncate to 16 chars for LCD
+    String ipDisplay = ipStr.length() > 16 ? ipStr.substring(0, 16) : ipStr;
+    LCDManager::getInstance().printLine(0, ipDisplay);
+    delay(100);
+    LCDManager::getInstance().printLine(1, "Wifi OK!");
+    Serial.println("WiFi info sent to LCD");
+    Serial.println("LCD updated with WiFi info");
+    delay(200);
     
     // Start timer to clear display after 3 seconds
     ipDisplayTime = millis();
@@ -1395,6 +1416,11 @@ void setup() {
     DisplayManager::getInstance().drawString(0, 16, "WiFi - Manager");
     DisplayManager::getInstance().updateDisplay();
     
+    // Show AP mode on LCD
+    LCDManager::getInstance().clear();
+    LCDManager::getInstance().printLine(0, "WiFi manager");
+    LCDManager::getInstance().printLine(1, "ESP-WIFI-MGR");
+    
     // NULL sets an open Access Point
     WiFi.softAP("ESP-WIFI-MANAGER", NULL);
 
@@ -1551,12 +1577,34 @@ void setup() {
 // LOOP HELPER FUNCTIONS
 // ============================================================================
 
+// Track if LCD has been updated with final status
+bool lcdStatusShown = false;
+
 // Handle display tasks (IP display timeout, etc.)
 void handleDisplayTasks() {
   // Non-blocking IP display clear after timeout
   if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > DISPLAY_IP_SHOW_DURATION)) {
     DisplayManager::getInstance().clear();
     DisplayManager::getInstance().updateDisplay();
+    
+    // Update LCD with system ready status (only once)
+    if (!lcdStatusShown) {
+      Serial.println("Setting LCD to ready status...");
+      delay(200);  // Give LCD time to settle
+      
+      if (LCDManager::getInstance().isInitialized()) {
+        LCDManager::getInstance().clear();
+        delay(100);
+        LCDManager::getInstance().printLine(0, "MS11 Ready");
+        delay(50);
+        LCDManager::getInstance().printLine(1, "fw-" + currentFirmwareVersion);
+        Serial.println("LCD updated with status");
+        lcdStatusShown = true;
+      } else {
+        Serial.println("LCD not initialized");
+      }
+    }
+    
     ipDisplayCleared = true;
   }
 }

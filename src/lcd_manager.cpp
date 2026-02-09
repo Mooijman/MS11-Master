@@ -13,41 +13,66 @@ LCDManager::~LCDManager() {
 }
 
 bool LCDManager::begin() {
+  Serial.println("\n[LCDManager] === BEGIN INITIALIZATION ===");
+  Serial.println("[LCDManager] Initialized flag: " + String(initialized));
+  
   if (initialized) {
+    Serial.println("[LCDManager] Already initialized, returning true");
     return true;
   }
 
+  Serial.println("[LCDManager] Address: 0x" + String(address, HEX));
+  Serial.println("[LCDManager] Cols: " + String(cols) + ", Rows: " + String(rows));
+
   // Check I2C manager is initialized
+  Serial.println("[LCDManager] Checking I2CManager...");
   if (!I2CManager::getInstance().isInitialized()) {
+    Serial.println("[LCDManager] I2CManager not initialized, initializing...");
     if (!I2CManager::getInstance().begin()) {
       lastError = "I2C Manager not initialized";
       Serial.println("[LCDManager] ERROR: " + lastError);
       return false;
     }
   }
+  Serial.println("[LCDManager] I2CManager OK");
 
   // Verify LCD is present on I2C bus
+  Serial.println("[LCDManager] Checking display bus health...");
   if (!I2CManager::getInstance().isDisplayBusHealthy()) {
     Serial.println("[LCDManager] WARNING: Display bus may not be ready");
     // Continue anyway - LCD may still work
   }
+  Serial.println("[LCDManager] Display bus health check complete");
 
   // Initialize LCD
+  Serial.println("[LCDManager] Calling lcd.init()...");
   try {
     lcd.init();
+    Serial.println("[LCDManager] lcd.init() completed");
+    
+    Serial.println("[LCDManager] Calling lcd.backlight()...");
     lcd.backlight();
+    Serial.println("[LCDManager] Backlight ON");
+    
+    Serial.println("[LCDManager] Calling lcd.clear()...");
     lcd.clear();
+    Serial.println("[LCDManager] Clear complete");
+    
+    Serial.println("[LCDManager] Calling lcd.home()...");
     lcd.home();
+    Serial.println("[LCDManager] Home complete");
     
     initialized = true;
     backlight_state = true;
     
     Serial.println("[LCDManager] ✓ LCD 16x2 initialized (I2C1: 0x" + 
                    String(address, HEX) + " @ 100kHz)");
+    Serial.println("[LCDManager] === INITIALIZATION SUCCESS ===\n");
     return true;
   } catch (...) {
     lastError = "LCD initialization failed";
     Serial.println("[LCDManager] ERROR: " + lastError);
+    Serial.println("[LCDManager] === INITIALIZATION FAILED ===\n");
     return false;
   }
 }
@@ -117,13 +142,17 @@ void LCDManager::printLine(uint8_t row, const String& text) {
     return;
   }
   
+  Serial.println("[LCD] printLine(row=" + String(row) + ", text='" + text + "')");
   setCursor(0, row);
   // Print text padded to full line width (clear any remaining chars)
   String padded = text;
   while (padded.length() < cols) {
     padded += " ";
   }
-  print(padded.substring(0, cols));
+  String output = padded.substring(0, cols);
+  Serial.println("[LCD] Writing: '" + output + "' (len=" + String(output.length()) + ")");
+  print(output);
+  delay(100);  // Give LCD time to render
 }
 
 void LCDManager::clearLine(uint8_t row) {

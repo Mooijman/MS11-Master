@@ -7,38 +7,42 @@
 #include <freertos/semphr.h>
 
 // ============================================================================
-// I2C BUS CONFIGURATION
+// I2C BUS CONFIGURATION (PINS SWAPPED FOR COMPATIBILITY)
 // ============================================================================
 // XIAO ESP32-S3 Pinout:
 //
-// Bus 0 (Slave Bus - CRITICAL):
+// Bus 0 (Display Bus - Wire/I2C0):
+//   SDA: GPIO8 (D9) - 100kHz (conservative, reliable)
+//   SCL: GPIO9 (D10)
+//   Devices: LCD 16x2 (0x27), OLED Display (0x3C), Seesaw (0x36)
+//   Note: LiquidCrystal_I2C only supports Wire, so all display on Bus 0
+//
+// Bus 1 (Slave Bus - Wire1/I2C1 - CRITICAL):
 //   SDA: GPIO5 (D4) - 100kHz (conservative, reliable)
 //   SCL: GPIO6 (D5)
 //   Devices: Slave Controller (ATmega328P @ 0x30)
-//
-// Bus 1 (Display Bus - NON-CRITICAL):
-//   SDA: GPIO8 (D9) - 100kHz (conservative, reliable)
-//   SCL: GPIO9 (D10)
-//   Devices: OLED Display (SSD1306 @ 0x3C)
 //
 // Wiring Diagram:
 // ┌─────────────────┬─────────────────┐
 // │  XIAO ESP32-S3  │     Device      │
 // ├─────────────────┼─────────────────┤
-// │ GPIO6 (D5/GND) -├─ SDA (Bus 0)    │ Pull-ups to 3.3V
-// │ GPIO7 (D6/GND) -├─ SCL (Bus 0)    │ (4.7kΩ recommended)
+// │ GPIO8 (D9)   ---|─ SDA (Bus 0)    │ Pull-ups to 3.3V
+// │ GPIO9 (D10)  ---|─ SCL (Bus 0)    │ (4.7kΩ recommended)
+// │ (LCD,OLED,Seesaw)                 │
 // ├─────────────────┼─────────────────┤
-// │ GPIO8 (D8)   ---|─ SDA (Bus 1)    │ Pull-ups to 3.3V  
-// │ GPIO9 (D9)   ---|─ SCL (Bus 1)    │ (4.7kΩ recommended)
+// │ GPIO5 (D4)   ---|─ SDA (Bus 1)    │ Pull-ups to 3.3V
+// │ GPIO6 (D5)   ---|─ SCL (Bus 1)    │ (4.7kΩ recommended)
+// │ (ATmega slave)                     │
 // ├─────────────────┼─────────────────┤
 // │ GND           --|─ GND (common)   │ Common ground
 // │ 3V3           --|─ VCC (all)      │ Common power
 // └─────────────────┴─────────────────┘
 
 // Bus enumeration
+// Note: After pin swap, Bus 0 (Wire) = GPIO8/9 (Display), Bus 1 (Wire1) = GPIO5/6 (Slave)
 enum I2CBus {
-  I2C_BUS_SLAVE = 0,    // GPIO5/6 @ 100kHz - Critical slave controller
-  I2C_BUS_DISPLAY = 1   // GPIO8/9 @ 100kHz - Non-critical display
+  I2C_BUS_DISPLAY = 0,  // GPIO8/9 @ 100kHz - Display devices (Wire/I2C0)
+  I2C_BUS_SLAVE = 1     // GPIO5/6 @ 100kHz - Critical slave controller (Wire1/I2C1)
 };
 
 // I2C Error codes

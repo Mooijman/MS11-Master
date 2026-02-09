@@ -27,24 +27,26 @@ bool I2CManager::begin() {
     return false;
   }
 
-  // Initialize Slave Bus (GPIO5/6 @ 100kHz) - Standard I2C pins
+  // Initialize Slave Bus (GPIO8/9 @ 100kHz) - Now used for LCD via LiquidCrystal_I2C
+  // Wire (I2C0) uses GPIO8/9 because LiquidCrystal_I2C doesn't support Wire1
   // Conservative speed, same as display bus for reliability
-  if (!slaveBus->begin(5, 6, 100000)) {
+  if (!slaveBus->begin(8, 9, 100000)) {
     setError(I2C_ERROR_NOT_INIT);
-    Serial.println("[I2CManager] ERROR: Failed to initialize Slave Bus (GPIO5/6)");
+    Serial.println("[I2CManager] ERROR: Failed to initialize Slave Bus (GPIO8/9)");
     vSemaphoreDelete(slaveMutex);
     vSemaphoreDelete(displayMutex);
     return false;
   }
   
   slaveBus->setTimeout(100);  // 100ms timeout per transaction
-  Serial.println("[I2CManager] ✓ Slave Bus initialized (GPIO5/6 @ 100kHz)");
+  Serial.println("[I2CManager] ✓ Slave Bus initialized (GPIO8/9 @ 100kHz - LCD via Wire)");
 
-  // Initialize Display Bus (GPIO8/9 @ 100kHz)
+  // Initialize Display Bus (GPIO5/6 @ 100kHz) - ATmega slave and other I2C_TWO devices
+  // Wire1 (I2C1) uses GPIO5/6 for devices that support I2C_TWO selection
   // Non-critical: Conservative speed for reliability
-  if (!displayBus->begin(8, 9, 100000)) {
+  if (!displayBus->begin(5, 6, 100000)) {
     setError(I2C_ERROR_NOT_INIT);
-    Serial.println("[I2CManager] ERROR: Failed to initialize Display Bus (GPIO8/9)");
+    Serial.println("[I2CManager] ERROR: Failed to initialize Display Bus (GPIO5/6)");
     slaveBus->end();
     vSemaphoreDelete(slaveMutex);
     vSemaphoreDelete(displayMutex);
@@ -52,7 +54,7 @@ bool I2CManager::begin() {
   }
   
   displayBus->setTimeout(50);  // 50ms timeout for display
-  Serial.println("[I2CManager] ✓ Display Bus initialized (GPIO8/9 @ 100kHz)");
+  Serial.println("[I2CManager] ✓ Display Bus initialized (GPIO5/6 @ 100kHz - Wire1)");
 
   initialized = true;
   setError(I2C_OK);
