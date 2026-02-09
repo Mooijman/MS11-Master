@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.16] - 2026-02-09
+
+### Fixed
+- **I2C Bus Mapping**: Corrected reversed bus assignments in I2CManager
+  - Bus 0 (Display): Now correctly uses Wire (GPIO8/9) for LCD/OLED/Seesaw
+  - Bus 1 (Slave): Now correctly uses Wire1 (GPIO5/6) for ATmega328P controller
+  - Updated I2C scanner API endpoints to reflect correct bus topology
+- **I2C Diagnostics UI**: Fixed device list rendering and removed redundant bus labels
+
 ## [2026.1.1.15] - 2026-02-09
 
 ### Changed
