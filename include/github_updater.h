@@ -6,6 +6,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "display_manager.h"  // Use DisplayManager instead of direct SSD1306
+#include "lcd_manager.h"      // Use LCDManager for LCD display updates
 
 // Update state enum
 enum UpdateState {

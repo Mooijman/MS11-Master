@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.19] - 2026-02-10
+
+### Fixed
+- **Software Update Display**: OLED and LCD now display update status during firmware/filesystem downloads
+  - OLED shows: "Updating FW/FS", "Please Wait...", "DO NOT POWER OFF", then "Update done" / "Rebooting..."
+  - LCD shows: "Updating..." during any software update
+  - Previously display remained blank during updates (all display calls were commented out)
+
+## [2026.1.1.18] - 2026-02-10
+
+### Added
+- **GitHub Updater**: Complete firmware/filesystem update system integrated
+- **LCD Display Support**: 16x2 I2C LCD manager for system status
+- **Display Manager**: Unified OLED display control via SSD1306
+
 ## [2026.1.1.16] - 2026-02-09
 
 ### Fixed

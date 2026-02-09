@@ -165,27 +165,39 @@ void Settings::updateVersions() {
 }
 
 // Sync version from compile-time defines with NVS storage
+// Only updates if firmware was actually rebuilt (new compile-time version differs from stored version)
+// This preserves debug version changes across reboots
 void Settings::syncVersions() {
     String compiledFw = getCompiledFirmwareVersion();
     String compiledFs = getCompiledFilesystemVersion();
     
-    bool updated = false;
+    bool fwUpdated = false;
+    bool fsUpdated = false;
     
-    if (firmwareVersion != compiledFw) {
-        Serial.println("[Settings] Firmware version updated: " + firmwareVersion + " -> " + compiledFw);
+    // Check if STORED version differs from COMPILED version
+    // If different, firmware was rebuilt and should overwrite any debug changes
+    preferences.begin(NVS_NAMESPACE_CONFIG, true);
+    String storedFw = preferences.getString("fw_version", "");
+    String storedFs = preferences.getString("fs_version", "");
+    preferences.end();
+    
+    if (storedFw != compiledFw) {
+        Serial.println("[Settings] Firmware rebuild detected: " + storedFw + " -> " + compiledFw);
         firmwareVersion = compiledFw;
-        updated = true;
+        fwUpdated = true;
     }
     
-    if (filesystemVersion != compiledFs) {
-        Serial.println("[Settings] Filesystem version updated: " + filesystemVersion + " -> " + compiledFs);
+    if (storedFs != compiledFs) {
+        Serial.println("[Settings] Filesystem rebuild detected: " + storedFs + " -> " + compiledFs);
         filesystemVersion = compiledFs;
-        updated = true;
+        fsUpdated = true;
     }
     
-    if (updated) {
+    if (fwUpdated || fsUpdated) {
         updateVersions();
         Serial.println("[Settings] Versions synchronized with firmware");
+    } else {
+        Serial.println("[Settings] No rebuild detected - keeping stored versions");
     }
     
     Serial.println("[Settings] Current versions:");
