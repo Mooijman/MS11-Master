@@ -108,24 +108,21 @@ bool GitHubUpdater::checkGitHubRelease(const String& updateUrl, const String& gi
   int httpCode = http.GET();
   
   if (httpCode == 200) {
-    String payload = http.getString();
+    int contentLength = http.getSize();
+    Serial.printf("GitHub API Content-Length header: %d bytes\n", contentLength);
     
-    Serial.printf("GitHub API response size: %d bytes\n", payload.length());
+    String payload = http.getString();
+    Serial.printf("Actually received: %d bytes\n", payload.length());
+    
     if (payload.length() == 0) {
-      Serial.println("ERROR: Empty response from GitHub!");
+      Serial.println("ERROR: Empty payload after http.getString()!");
       updateInfo.state = UPDATE_ERROR;
-      updateInfo.lastError = "Empty GitHub response";
+      updateInfo.lastError = "Empty response";
       http.end();
       return false;
     }
     
-    // Check if response looks valid (ends with })
-    if (!payload.endsWith("}")) {
-      Serial.println("ERROR: Response doesn't end with } - possibly truncated!");
-      Serial.printf("Last 50 chars: %s\n", payload.substring(max(0, (int)payload.length()-50)).c_str());
-    }
-    
-    DynamicJsonDocument doc(32768);  // 32KB buffer
+    JsonDocument doc;  // Unlimited size
     DeserializationError error = deserializeJson(doc, payload);
     
     if (error) {
