@@ -34,8 +34,8 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026.1.1.12"
-#define FILESYSTEM_VERSION "fs-2026.1.1.12"
+#define FIRMWARE_VERSION "fw-2026.1.1.13"
+#define FILESYSTEM_VERSION "fs-2026.1.1.13"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 

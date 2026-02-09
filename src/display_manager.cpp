@@ -1,7 +1,7 @@
 #include "display_manager.h"
 
 DisplayManager::DisplayManager() 
-  : display(DISPLAY_I2C_ADDRESS, 8, 9) {  // Use Bus 1 pins (GPIO8/9)
+  : display(DISPLAY_I2C_ADDRESS, 8, 9, GEOMETRY_128_64, I2C_TWO, 100000) {  // Bus 1 I2C (GPIO8/9 @ 100kHz)
 }
 
 DisplayManager::~DisplayManager() {
@@ -22,6 +22,7 @@ bool DisplayManager::begin() {
   }
 
   // Initialize SSD1306 display
+  // Note: I2C address and pins already configured in constructor
   if (!display.init()) {
     lastError = "SSD1306 initialization failed";
     Serial.println("[DisplayManager] ERROR: " + lastError);

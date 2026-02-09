@@ -232,8 +232,22 @@ void setup() {
   delay(2000);
 
   // Show Waacs logo on display
+  Serial.println("Displaying Waacs logo...");
   DisplayManager::getInstance().clear();
-  // TODO: Implement drawXbm in DisplayManager or use drawString instead
+  delay(100);
+  // Waacs logo: 105 pixels wide, 21 pixels high (centered on 128x64 display)
+  // x=11 centers the logo: (128-105)/2 = 11.5 ≈ 11
+  DisplayManager::getInstance().drawXbm(11, 16, 105, 21, Waacs_Logo_bits);
+  Serial.println("drawXbm called for Waacs logo (105x21 @ 11,16)");
+  DisplayManager::getInstance().updateDisplay();
+  Serial.println("Waacs logo displayed");
+  delay(3000);
+  
+  // Clear and show MS11 Master text
+  DisplayManager::getInstance().clear();
+  delay(100);
+  Serial.println("Displaying MS11 Master text...");
+  DisplayManager::getInstance().setFont(ArialMT_Plain_10);
   DisplayManager::getInstance().drawStringCenter(28, "MS11 Master");
   DisplayManager::getInstance().updateDisplay();
   delay(2000);
@@ -279,9 +293,13 @@ void setup() {
     Serial.println("WiFi connected!");
     
     // Show WiFi logo on OLED
+    Serial.println("Drawing WiFi logo...");
     DisplayManager::getInstance().clear();
+    delay(100);  // Ensure clear is complete
     DisplayManager::getInstance().drawXbm(34, 14, 60, 36, WiFi_Logo_bits);
+    Serial.println("WiFi logo drawn, updating display...");
     DisplayManager::getInstance().updateDisplay();
+    delay(100);  // Let render complete
     delay(1000);
     
     // Show IP address + versions

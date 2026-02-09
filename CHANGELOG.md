@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.13] - 2026-02-09
+
+### Fixed
+- **OLED Display Boot Sequence**: Fixed Waacs logo rendering on startup
+  - Corrected XBM bitmap dimensions from 200x52 to 105x21 pixels
+  - Repositioned logo to proper coordinates (x=11, y=16) for centered display
+  - Added proper I2C_TWO bus selection for SSD1306 driver initialization
+  - Boot sequence now displays: Waacs logo → MS11 Master text → WiFi logo → IP address
+  - Verified with git history to match working implementation from previous releases
+
+### Technical Details
+- Fixed `DisplayManager` constructor to use correct I2C_TWO parameter for Wire1
+- Updated images.h with PROGMEM attribute for optimal memory usage
+- Boot display sequence timing: 3s (logo) + 2s (text) + 1s (wifi) + continuous (info)
+
 ## [2026.1.1.12] - 2026-02-09
 
 ### Changed
