@@ -3,7 +3,9 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
-#include <SSD1306.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include "display_manager.h"  // Use DisplayManager instead of direct SSD1306
 
 // Update state enum
 enum UpdateState {
@@ -31,7 +33,7 @@ struct UpdateInfo {
 
 class GitHubUpdater {
 public:
-  GitHubUpdater(Preferences& prefs, SSD1306& disp);
+  GitHubUpdater(Preferences& prefs);
   
   // Update info access
   UpdateInfo& getUpdateInfo();
@@ -66,7 +68,6 @@ public:
 private:
   UpdateInfo updateInfo;
   Preferences& preferences;
-  SSD1306& display;
 };
 
 #endif // GITHUB_UPDATER_H

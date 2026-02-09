@@ -73,7 +73,8 @@ Clean Build Test Results:
 | **CPU** | ESP32-S3 @ 240 MHz (dual-core) |
 | **Flash** | 8MB (1.9MB × 2 OTA + 64KB LittleFS + overhead) |
 | **RAM** | 320KB (51.5 KB used) |
-| **I2C Pins** | GPIO6 (SDA), GPIO7 (SCL) |
+| **I2C Bus 0** | GPIO5 (SDA), GPIO6 (SCL) @ 100kHz - STANDARD I2C |
+| **I2C Bus 1** | GPIO8 (SDA), GPIO9 (SCL) @ 100kHz |
 | **Upload Speed** | 921600 baud |
 | **Firmware Size** | 1.3 MB |
 | **Build Time** | 16.37 sec (clean) |
@@ -166,7 +167,8 @@ ls -la /dev/cu.*
 ```
 
 ### If OLED doesn't display:
-1. Verify I2C on GPIO6 (SDA) and GPIO7 (SCL)
+1. Verify I2C Bus 0 on GPIO5 (SDA) and GPIO6 (SCL) @ 100kHz - Standard pins
+2. Verify I2C Bus 1 on GPIO8 (SDA) and GPIO9 (SCL) @ 100kHz
 2. Check 3.3V and GND connections
 3. Enable debug mode in settings to verify I2C scan
 

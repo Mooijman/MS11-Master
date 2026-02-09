@@ -1,0 +1,7 @@
+{
+    "C_Cpp.default.configurationProvider": "platformio-ide",
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.intelliSenseEngineFallback": "enabled",
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": false
+}

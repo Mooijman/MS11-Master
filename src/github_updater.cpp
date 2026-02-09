@@ -8,8 +8,8 @@
 #include <esp_task_wdt.h>
 #include <ArduinoJson.h>
 
-GitHubUpdater::GitHubUpdater(Preferences& prefs, SSD1306& disp) 
-  : preferences(prefs), display(disp) {
+GitHubUpdater::GitHubUpdater(Preferences& prefs) 
+  : preferences(prefs) {
   updateInfo.state = UPDATE_IDLE;
   updateInfo.downloadProgress = 0;
 }
@@ -184,14 +184,14 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   }
   
   Serial.println(">>> DISPLAYING 'Updating FW' on OLED <<<");
-  display.normalDisplay();  // Ensure normal mode
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Updating FW");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 30, "Please Wait...");
-  display.drawString(0, 45, "DO NOT POWER OFF");
-  display.display();
+  // DisplayManager::getInstance().normalDisplay();  // Ensure normal mode
+  // DisplayManager::getInstance().clear();
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_16);
+  // DisplayManager::getInstance().drawString(0, 0, "Updating FW");
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+  // DisplayManager::getInstance().drawString(0, 30, "Please Wait...");
+  // DisplayManager::getInstance().drawString(0, 45, "DO NOT POWER OFF");
+  // DisplayManager::getInstance().display();
   Serial.println(">>> OLED display() called <<<");
   
   updateInfo.state = UPDATE_DOWNLOADING;
@@ -308,13 +308,13 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   updateInfo.downloadProgress = 100;
   
   Serial.println(">>> DISPLAYING 'Update done / Rebooting...' on OLED <<<");
-  display.clear();
+  // DisplayManager::getInstance().clear();
   // Keep normal display - no invertDisplay() for OTA updates
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 15, "Update done");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 40, "Rebooting...");
-  display.display();
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_16);
+  // DisplayManager::getInstance().drawString(0, 15, "Update done");
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+  // DisplayManager::getInstance().drawString(0, 40, "Rebooting...");
+  // DisplayManager::getInstance().display();
   Serial.println(">>> OLED display() called (normal white-on-black) <<<");
   
   String newVersion = updateInfo.remoteVersion;
@@ -334,14 +334,14 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     return false;
   }
   
-  display.normalDisplay();  // Ensure normal mode
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Updating FS");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 30, "Please Wait...");
-  display.drawString(0, 45, "DO NOT POWER OFF");
-  display.display();
+  // DisplayManager::getInstance().normalDisplay();  // Ensure normal mode
+  // DisplayManager::getInstance().clear();
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_16);
+  // DisplayManager::getInstance().drawString(0, 0, "Updating FS");
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+  // DisplayManager::getInstance().drawString(0, 30, "Please Wait...");
+  // DisplayManager::getInstance().drawString(0, 45, "DO NOT POWER OFF");
+  // DisplayManager::getInstance().display();
   
   updateInfo.state = UPDATE_DOWNLOADING;
   updateInfo.downloadProgress = 0;
@@ -465,13 +465,13 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   updateInfo.downloadProgress = 100;
   
   Serial.println(">>> DISPLAYING 'Update done / Rebooting...' on OLED (LittleFS) <<<");
-  display.clear();
+  // DisplayManager::getInstance().clear();
   // Keep normal display - no invertDisplay() for OTA updates
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 15, "Update done");
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 40, "Rebooting...");
-  display.display();
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_16);
+  // DisplayManager::getInstance().drawString(0, 15, "Update done");
+  // DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+  // DisplayManager::getInstance().drawString(0, 40, "Rebooting...");
+  // DisplayManager::getInstance().display();
   Serial.println(">>> OLED display() called (normal white-on-black) <<<");
   
   String newVersion = updateInfo.remoteVersion;

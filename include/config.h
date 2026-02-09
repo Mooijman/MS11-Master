@@ -9,6 +9,8 @@
 
 // Display & Debugging
 #define FEATURE_OLED_DISPLAY        // SSD1306 OLED display support
+#define FEATURE_LCD_16X2            // 16x2 LCD with I2C PCF8574 backpack
+#define FEATURE_SEESAW_ROTARY       // Seesaw I2C rotary encoder
 #define FEATURE_GPIO_VIEWER         // Real-time GPIO monitoring (debug)
 
 // File System & Management
@@ -32,18 +34,63 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026.1.1.11"
-#define FILESYSTEM_VERSION "fs-2026.1.1.11"
+#define FIRMWARE_VERSION "fw-2026.1.1.12"
+#define FILESYSTEM_VERSION "fs-2026.1.1.12"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
 // ============================================================================
-// HARDWARE CONFIGURATION
+// HARDWARE CONFIGURATION - XIAO ESP32-S3 I2C DUAL BUS SETUP
 // ============================================================================
+// BUS 0 (Slave Bus - Critical) - Uses STANDARD I2C pins:
+//   GPIO5 (D4) = SDA (default I2C SDA)
+//   GPIO6 (D5) = SCL (default I2C SCL)
+//   Speed: 100kHz (conservative, reliable)
+//   Device: Slave Controller (ATmega328P @ 0x30)
+//   Pull-ups: 4.7kΩ to 3.3V
+//
+// BUS 1 (Display Bus - Non-critical):
+//   GPIO8 (D9) = SDA
+//   GPIO9 (D10) = SCL
+//   Speed: 100kHz (conservative, reliable)
+//   Device: OLED Display (SSD1306 @ 0x3C)
+//   Pull-ups: 4.7kΩ to 3.3V
+//
 // OLED Display (SSD1306) - XIAO S3
-#define OLED_I2C_ADDRESS 0x3c
-#define OLED_SDA_PIN 6   // GPIO6 on XIAO S3 (D5)
-#define OLED_SCL_PIN 7   // GPIO7 on XIAO S3 (D6)
+#define OLED_I2C_ADDRESS 0x3C
+#define OLED_DISPLAY_BUS 1  // Uses Bus 1 (GPIO8/9)
+#define OLED_SDA_PIN 8      // GPIO8 on XIAO S3 (D9) - Bus 1
+#define OLED_SCL_PIN 9      // GPIO9 on XIAO S3 (D10) - Bus 1
+
+// LCD 16x2 Display (PCF8574 I2C backpack) - XIAO S3
+#define LCD_I2C_ADDRESS 0x27        // PCF8574 I2C address (alt: 0x3F)
+#define LCD_DISPLAY_BUS 1   // Uses Bus 1 (GPIO8/9) - same as OLED
+#define LCD_COLS 16
+#define LCD_ROWS 2
+
+// Seesaw Rotary Encoder (Adafruit) - XIAO S3
+#define SEESAW_I2C_ADDRESS 0x36     // Seesaw default address
+#define SEESAW_DISPLAY_BUS 1        // Uses Bus 1 (GPIO8/9) - same as OLED
+
+// Slave Controller (ATmega328P) - XIAO S3
+#define SLAVE_I2C_BUS 0     // Uses Bus 0 (GPIO5/6) - Standard I2C
+#define SLAVE_SDA_PIN 5     // GPIO5 on XIAO S3 (D4) - Bus 0 (default SDA)
+#define SLAVE_SCL_PIN 6     // GPIO6 on XIAO S3 (D5) - Bus 0 (default SCL)
+
+// ============================================================================
+// GPIO CONFIGURATION - XIAO ESP32-S3 Digital I/O
+// ============================================================================
+// XIAO S3 Available pins: D0-D4, D7, D10, D11-D21 (D5,D6,D8,D9 used for I2C)
+//
+// GPIO Control Pins:
+#define GPIO_POWER_SWITCH    4      // D4 - Power switch input (active high)
+#define GPIO_CONTROL_BTN1    3      // D3 - Control button 1 (active low)
+#define GPIO_CONTROL_BTN2    2      // D2 - Control button 2 (active low)
+#define GPIO_STATUS_LED      1      // D1 - Status LED output (PWM capable)
+
+// GPIO Configuration
+#define GPIO_DEBOUNCE_MS     20     // Debounce time for buttons (ms)
+#define GPIO_LONGPRESS_MS    1000   // Long press detection (ms)
 
 // ============================================================================
 // NETWORK CONFIGURATION

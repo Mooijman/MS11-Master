@@ -141,7 +141,8 @@ gh release create YYYY.M.m.pp \
 
 ### Hardware Configuration
 - **Board**: Seeed Studio XIAO ESP32-S3
-- **Display**: SSD1306 OLED op I2C (GPIO6 SDA, GPIO7 SCL)
+- **Slave I2C**: Bus 0 @ 100kHz (GPIO5 SDA, GPIO6 SCL) - Standard I2C pins
+- **Display I2C**: Bus 1 @ 100kHz (GPIO8 SDA, GPIO9 SCL)
 - **Upload Speed**: 921600 baud
 
 ### Current Firmware Status

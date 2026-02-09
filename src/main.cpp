@@ -19,6 +19,12 @@
 #include "images.h"
 #include "config.h"
 #include "settings.h"
+#include "i2c_manager.h"
+#include "display_manager.h"
+#include "lcd_manager.h"
+#include "seesaw_rotary.h"
+#include "gpio_manager.h"
+#include "slave_controller.h"
 #include "github_updater.h"
 #include "wifi_manager.h"
 #include "md11_slave_update.h"
@@ -29,8 +35,11 @@ Preferences preferences;
 // GPIO Viewer pointer (only instantiated if enabled)
 GPIOViewer* gpio_viewer = nullptr;
 
-// OLED display instance (using config.h constants)
-SSD1306 display(OLED_I2C_ADDRESS, OLED_SDA_PIN, OLED_SCL_PIN);
+// I2C Managers (use singleton pattern)
+// - I2CManager: Dual-bus I2C controller (Slave @ 100kHz, Display @ 100kHz)
+// - DisplayManager: OLED driver (Bus 1: GPIO8/9)
+// - SlaveController: ATmega328P interface (Bus 0: GPIO6/7)
+// Note: Never instantiate SSD1306 directly - use DisplayManager
 
 // GitHub updater instance
 GitHubUpdater* githubUpdater = nullptr;
@@ -52,11 +61,8 @@ String cachedScanResults = "";
 unsigned long lastScanTime = 0;
 bool scanInProgress = false;
 
-// I2C LED demo constants
-static const uint8_t I2C_LED_ADDR = 0x30;
-static const uint8_t I2C_LED_REG_ONOFF = 0x10;
-static const uint8_t I2C_LED_REG_BLINK = 0x11;
-static const uint8_t I2C_LED_REG_STATUS = 0x20;
+// NOP: I2C LED demo constants moved to slave_controller.h
+// Use SlaveController singleton for all slave communication
 
 // Compatibility layer - reference settings module variables
 // These allow existing code to work without changes
@@ -186,18 +192,53 @@ void syncTimeIfEnabled(bool isBootSync = false) {
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
 
-  // Initialize OLED display
-  display.init();
-  display.normalDisplay();  // Ensure normal display mode
-  display.setFont(ArialMT_Plain_10);
-  display.clear();
+  // Initialize I2C Manager (Dual Bus: Slave @100kHz, Display @100kHz)
+  if (!I2CManager::getInstance().begin()) {
+    Serial.println("CRITICAL: I2C Manager initialization failed!");
+    while (true) { delay(100); }  // Halt
+  }
+
+  // Initialize GPIO Manager (Power Switch, Buttons, Status LED)
+  if (!GPIOManager::getInstance().begin()) {
+    Serial.println("WARNING: GPIO Manager initialization failed");
+  }
+
+  // Initialize Display Manager (Bus 1: GPIO8/9, OLED @ 0x3C)
+  if (!DisplayManager::getInstance().begin()) {
+    Serial.println("WARNING: OLED Display initialization failed - continuing anyway");
+  }
   
-  // Show Waacs logo
-  display.drawXbm(11, 16, 105, 21, Waacs_Logo_bits);
-  display.display();
+  // Initialize LCD Manager (Bus 1: GPIO8/9, LCD @ 0x27)
+  if (!LCDManager::getInstance().begin()) {
+    Serial.println("WARNING: LCD 16x2 initialization failed - continuing anyway");
+  } else {
+    // Show startup message on LCD
+    LCDManager::getInstance().clear();
+    LCDManager::getInstance().printLine(0, "*MagicSmoker 11*");
+    LCDManager::getInstance().printLine(1, ".**   Starting...");
+  }
+  
+  // Initialize Seesaw Rotary Encoder (Bus 1: GPIO8/9, Seesaw @ 0x36)
+  if (!SeesawRotary::getInstance().begin()) {
+    Serial.println("WARNING: Seesaw Rotary Encoder initialization failed - continuing anyway");
+  }
+  
+  // Initialize Slave Controller (Bus 0: GPIO6/7)
+  if (!SlaveController::getInstance().begin()) {
+    Serial.println("WARNING: Slave controller not responding - check I2C wiring");
+  }
+  
+  // Update display managers with version info after delays
   delay(2000);
-  display.clear();
-  display.display();
+
+  // Show Waacs logo on display
+  DisplayManager::getInstance().clear();
+  // TODO: Implement drawXbm in DisplayManager or use drawString instead
+  DisplayManager::getInstance().drawStringCenter(28, "MS11 Master");
+  DisplayManager::getInstance().updateDisplay();
+  delay(2000);
+  DisplayManager::getInstance().clear();
+  DisplayManager::getInstance().updateDisplay();
 
   initLittleFS();
 
@@ -214,7 +255,7 @@ void setup() {
   settings.print();
   
   // Initialize GitHub updater
-  githubUpdater = new GitHubUpdater(preferences, display);
+  githubUpdater = new GitHubUpdater(preferences);
   githubUpdater->loadUpdateInfo();
   
   // Initialize MD11 Slave updater
@@ -238,19 +279,19 @@ void setup() {
     Serial.println("WiFi connected!");
     
     // Show WiFi logo on OLED
-    display.clear();
-    display.drawXbm(34, 14, 60, 36, WiFi_Logo_bits);
-    display.display();
+    DisplayManager::getInstance().clear();
+    DisplayManager::getInstance().drawXbm(34, 14, 60, 36, WiFi_Logo_bits);
+    DisplayManager::getInstance().updateDisplay();
     delay(1000);
     
     // Show IP address + versions
-    display.clear();
-    display.setFont(ArialMT_Plain_10);
-    display.drawString(0, 0, "IP: " + WiFi.localIP().toString());
+    DisplayManager::getInstance().clear();
+    DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+    DisplayManager::getInstance().drawString(0, 0, "IP: " + WiFi.localIP().toString());
     // Line 2 intentionally left blank
-    display.drawString(0, 28, "fw-" + currentFirmwareVersion);
-    display.drawString(0, 42, "fs-" + currentFilesystemVersion);
-    display.display();
+    DisplayManager::getInstance().drawString(0, 28, "fw-" + currentFirmwareVersion);
+    DisplayManager::getInstance().drawString(0, 42, "fs-" + currentFilesystemVersion);
+    DisplayManager::getInstance().updateDisplay();
     
     // Start timer to clear display after 3 seconds
     ipDisplayTime = millis();
@@ -946,42 +987,78 @@ void setup() {
       }
       
       JsonDocument doc;
-      JsonArray devices = doc["devices"].to<JsonArray>();
       
-      // Scan I2C bus (addresses 0x03 to 0x77)
+      // Scan Bus 0 (Slave Bus - GPIO5/6 @ 100kHz)
+      JsonArray bus0Devices = doc["bus0"]["devices"].to<JsonArray>();
+      doc["bus0"]["name"] = "Bus 0: Slave (GPIO5/6 @ 100kHz)";
+      doc["bus0"]["speed"] = "100 kHz";
+      doc["bus0"]["pins"] = "GPIO5(SDA), GPIO6(SCL)";
+      
       for (uint8_t address = 0x03; address < 0x78; address++) {
-        Wire.beginTransmission(address);
-        uint8_t error = Wire.endTransmission();
-        
-        if (error == 0) {
-          // Device found
-          JsonObject device = devices.add<JsonObject>();
+        if (I2CManager::getInstance().ping(address, I2C_BUS_SLAVE)) {
+          JsonObject device = bus0Devices.add<JsonObject>();
           
           char hexAddr[5];
           sprintf(hexAddr, "0x%02X", address);
           device["address"] = hexAddr;
           device["decimal"] = address;
+          device["bus"] = 0;
           
           // Add device name if known
           String deviceName = "Unknown";
-          if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED";
-          else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280";
-          else if (address == 0x68) deviceName = "MPU6050/DS3231";
-          else if (address == 0x48) deviceName = "ADS1115";
-          else if (address == 0x20) deviceName = "PCF8574";
+          if (address == 0x30) deviceName = "MS11 Slave Controller (ATmega328P)";
+          else if (address == 0x14) deviceName = "Twiboot Bootloader (ATmega328P)";
           
           device["name"] = deviceName;
         }
+        yield();
       }
+      doc["bus0"]["count"] = bus0Devices.size();
       
-      doc["count"] = devices.size();
+      // Scan Bus 1 (Display Bus - GPIO8/9 @ 100kHz)
+      JsonArray bus1Devices = doc["bus1"]["devices"].to<JsonArray>();
+      doc["bus1"]["name"] = "Bus 1: Display (GPIO8/9 @ 100kHz)";
+      doc["bus1"]["speed"] = "100 kHz";
+      doc["bus1"]["pins"] = "GPIO8(SDA), GPIO9(SCL)";
+      
+      for (uint8_t address = 0x03; address < 0x78; address++) {
+        if (I2CManager::getInstance().ping(address, I2C_BUS_DISPLAY)) {
+          JsonObject device = bus1Devices.add<JsonObject>();
+          
+          char hexAddr[5];
+          sprintf(hexAddr, "0x%02X", address);
+          device["address"] = hexAddr;
+          device["decimal"] = address;
+          device["bus"] = 1;
+          
+          // Add device name if known
+          String deviceName = "Unknown";
+          if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED Display";
+          else if (address == 0x27 || address == 0x3F) deviceName = "PCF8574 LCD 16x2";
+          else if (address == 0x36) deviceName = "Seesaw Rotary Encoder";
+          else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280 Sensor";
+          else if (address == 0x68) deviceName = "MPU6050/DS3231 RTC";
+          else if (address == 0x48) deviceName = "ADS1115 ADC";
+          else if (address == 0x20) deviceName = "PCF8574 I/O Expander";
+          
+          device["name"] = deviceName;
+        }
+        yield();
+      }
+      doc["bus1"]["count"] = bus1Devices.size();
+      
+      // Total summary
+      doc["totalDevices"] = bus0Devices.size() + bus1Devices.size();
       
       String response;
       serializeJson(doc, response);
       request->send(200, "application/json", response);
     });
 
-    // API: I2C LED control
+    // API: I2C LED control (DEPRECATED - use SlaveController instead)
+    // TODO: Replace with actual slave control endpoints
+    // Example: /api/fan/set, /api/igniter/set, etc.
+    /*
     server.on("/api/i2c/led", HTTP_POST, [](AsyncWebServerRequest *request) {
       bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
 
@@ -990,355 +1067,37 @@ void setup() {
         return;
       }
 
-      if (!request->hasParam("action", true)) {
-        request->send(400, "application/json", "{\"error\":\"Missing action parameter\"}");
-        return;
-      }
-
-      String action = request->getParam("action", true)->value();
-      uint8_t reg = 0;
-      uint8_t value = 0;
-      String statusText = "";
-
-      if (action == "on") {
-        reg = I2C_LED_REG_ONOFF;
-        value = 1;
-        statusText = "aan";
-      } else if (action == "off") {
-        reg = I2C_LED_REG_ONOFF;
-        value = 0;
-        statusText = "uit";
-      } else if (action == "blink1") {
-        reg = I2C_LED_REG_BLINK;
-        value = 1;
-        statusText = "blink 1 Hz";
-      } else if (action == "blink4") {
-        reg = I2C_LED_REG_BLINK;
-        value = 2;
-        statusText = "blink 4 Hz";
-      } else if (action == "blink0") {
-        reg = I2C_LED_REG_BLINK;
-        value = 0;
-        statusText = "blink uit";
-      } else {
-        request->send(400, "application/json", "{\"error\":\"Invalid action\"}");
-        return;
-      }
-
-      Wire.beginTransmission(I2C_LED_ADDR);
-      Wire.write(reg);
-      Wire.write(value);
-      uint8_t error = Wire.endTransmission();
-
-      JsonDocument doc;
-      if (error == 0) {
-        doc["success"] = true;
-        doc["statusText"] = statusText;
-      } else {
-        doc["success"] = false;
-        doc["error"] = "I2C write failed";
-      }
-
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
+      request->send(501, "application/json", "{\"error\":\"Endpoint removed - use SlaveController API instead\"}");
     });
+    */
+    // Placeholder comment to indicate old LED demo code was removed
 
-    // API: I2C LED status
+    // DEPRECATED ENDPOINTS (commented out for refactoring)
+    // TODO: Implement proper SlaveController API endpoints
+    // - /api/slave/temperature
+    // - /api/slave/fan
+    // - /api/slave/igniter
+    // - /api/slave/auger
+    // - /api/bootloader/* endpoints
+    // 
+    // OLD ENDPOINTS - Lines below are commented out as they use undefined constants
+    // and old Wire API. They will be rewritten to use SlaveController and I2CManager.
+    /*
+    // API: I2C LED status (DEPRECATED)
     server.on("/api/i2c/led/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-
-      Wire.beginTransmission(I2C_LED_ADDR);
-      Wire.write(I2C_LED_REG_STATUS);
-      uint8_t error = Wire.endTransmission();
-
-      JsonDocument doc;
-      if (error == 0) {
-        Wire.requestFrom(I2C_LED_ADDR, (uint8_t)1);
-        if (Wire.available()) {
-          uint8_t status = Wire.read();
-          doc["success"] = true;
-          doc["status"] = status;
-          doc["statusText"] = status ? "aan" : "uit";
-        } else {
-          doc["success"] = false;
-          doc["error"] = "No data";
-        }
-      } else {
-        doc["success"] = false;
-        doc["error"] = "I2C write failed";
-      }
-
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
-    });
-
-    // API: Enter bootloader mode (send command to app at 0x30)
-    server.on("/api/i2c/bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-
-      // Send bootloader command to application at 0x30 (same as LED)
-      // Arduino protocol: Register 0x99 + Safety code 0xB0
-      const uint8_t REG_ENTER_BOOTLOADER = 0x99;  // Arduino bootloader register
-      const uint8_t BOOTLOADER_SAFETY_CODE = 0xB0;  // Safety code
-      const uint8_t TWIBOOT_ADDR = 0x14;  // Bootloader I2C address
-      const uint8_t TWIBOOT_READ_VERSION = 0x01;  // Bootloader command
-
-      Serial.println("[I2C] Sending bootloader command (0x99 + 0xB0) to application at 0x30...");
-      
-      Wire.beginTransmission(I2C_LED_ADDR);  // 0x30 - application address
-      Wire.write(REG_ENTER_BOOTLOADER);  // Register
-      Wire.write(BOOTLOADER_SAFETY_CODE);  // Safety code
-      uint8_t error = Wire.endTransmission();
-
-      JsonDocument doc;
-      if (error != 0) {
-        doc["success"] = false;
-        doc["error"] = "I2C transmission failed (error: " + String(error) + ")";
-        Serial.println("[I2C] Bootloader command failed: " + String(error));
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-        return;
-      }
-
-      Serial.println("[I2C] Bootloader command sent. Waiting for Arduino to reboot...");
-      
-      // Wait for app to reboot and bootloader to start (8 seconds with watchdog resets)
-      for (int i = 0; i < 80; i++) {
-        delay(100);
-        esp_task_wdt_reset();  // Prevent ESP32 watchdog reset
-      }
-      
-      // Verify bootloader is active at 0x14
-      Serial.println("[I2C] Checking if bootloader is active at 0x14...");
-      
-      // Simple presence check first
-      Wire.beginTransmission(TWIBOOT_ADDR);
-      error = Wire.endTransmission();
-      
-      if (error == 0) {
-        Serial.println("[I2C] Bootloader detected at 0x14!");
-        
-        // Try to read version
-        delay(50);  // Small delay before version read
-        Wire.beginTransmission(TWIBOOT_ADDR);
-        Wire.write(TWIBOOT_READ_VERSION);
-        Wire.endTransmission();
-        
-        delay(10);
-        uint8_t bytesRead = Wire.requestFrom(TWIBOOT_ADDR, (uint8_t)2);
-        
-        if (bytesRead >= 2) {
-          uint8_t major = Wire.read();
-          uint8_t minor = Wire.read();
-          doc["success"] = true;
-          doc["message"] = "Bootloader mode activated successfully";
-          doc["bootloaderVersion"] = String(major) + "." + String(minor);
-          Serial.println("[I2C] Bootloader version: " + String(major) + "." + String(minor));
-        } else {
-          // Bootloader present but version read failed - still success
-          doc["success"] = true;
-          doc["message"] = "Bootloader mode activated successfully";
-          doc["bootloaderVersion"] = "unknown";
-          Serial.println("[I2C] Bootloader active (version read failed)");
-        }
-      } else {
-        // Bootloader not detected yet - but command was sent successfully
-        doc["success"] = true;
-        doc["message"] = "Bootloader command sent";
-        doc["bootloaderVersion"] = "activating...";
-        doc["hint"] = "Wait 10-15 seconds for bootloader to fully activate at 0x14";
-        Serial.println("[I2C] Bootloader not yet detected at 0x14, may need more time");
-      }
-
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
+      // OLD CODE - DO NOT USE
     });
     
-    // API: Exit bootloader mode (start application)
+    // API: Exit bootloader mode (DEPRECATED)
     server.on("/api/i2c/exit-bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-
-      JsonDocument doc;
-      
-      Serial.println("[I2C] Exit bootloader command received");
-      
-      const uint8_t TWIBOOT_ADDR = 0x14;  // Bootloader I2C address
-      const uint8_t CMD_SWITCH_APPLICATION = 0x01;  // Twiboot command to switch mode
-      const uint8_t BOOTTYPE_APPLICATION = 0x80;    // Parameter to start application
-      
-      // Check if Arduino is in bootloader mode (at 0x14)
-      Wire.beginTransmission(TWIBOOT_ADDR);
-      uint8_t bootloaderError = Wire.endTransmission();
-      
-      if (bootloaderError == 0) {
-        // Arduino is in bootloader mode - send exit/start app command
-        Serial.println("[I2C] Arduino at 0x14 (bootloader), sending exit command...");
-        
-        // Twiboot protocol: CMD_SWITCH_APPLICATION (0x01) + BOOTTYPE_APPLICATION (0x80)
-        Wire.beginTransmission(TWIBOOT_ADDR);
-        Wire.write(CMD_SWITCH_APPLICATION);  // 0x01 - switch mode command
-        Wire.write(BOOTTYPE_APPLICATION);     // 0x80 - start application
-        uint8_t writeError = Wire.endTransmission();
-        
-        if (writeError == 0) {
-          Serial.println("[I2C] Exit bootloader command sent successfully");
-          
-          // Wait for Arduino to exit bootloader and start application
-          delay(1000);
-          
-          // Verify Arduino is now at 0x30 (application)
-          Wire.beginTransmission(I2C_LED_ADDR);
-          uint8_t appError = Wire.endTransmission();
-          
-          if (appError == 0) {
-            doc["success"] = true;
-            doc["message"] = "Arduino is terug in normale mode";
-            Serial.println("[I2C] Arduino successfully at 0x30 (application)");
-          } else {
-            // Arduino still not at 0x30 - exit command didn't work
-            doc["success"] = false;
-            doc["error"] = "Exit commando werkt niet";
-            doc["hint"] = "Arduino reageert niet op exit commando. Probeer Reset of powercycle.";
-            Serial.println("[I2C] Exit command failed - Arduino still at 0x14 or not responding");
-          }
-        } else {
-          doc["success"] = false;
-          doc["error"] = "Failed to send exit command (I2C error: " + String(writeError) + ")";
-          Serial.println("[I2C] Failed to send exit command (error: " + String(writeError) + ")");
-        }
-      } else {
-        // Arduino not in bootloader mode
-        doc["success"] = false;
-        doc["error"] = "Arduino not in bootloader mode";
-        doc["hint"] = "Arduino must be at 0x14 (bootloader) to exit";
-        Serial.println("[I2C] Arduino not at 0x14 - cannot exit bootloader");
-      }
-
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
+      // OLD CODE - DO NOT USE
     });
     
-    // API: Reset Arduino (exit bootloader mode)
+    // API: Reset Arduino (DEPRECATED)
     server.on("/api/i2c/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-
-      JsonDocument doc;
-      
-      Serial.println("[I2C] Reset Arduino command received");
-      
-      // Define bootloader commands
-      const uint8_t TWIBOOT_ADDR = 0x14;  // Bootloader I2C address
-      const uint8_t CMD_SWITCH_APPLICATION = 0x01;  // Twiboot command to switch mode
-      const uint8_t BOOTTYPE_APPLICATION = 0x80;    // Parameter to start application
-      
-      // First check if Arduino is in bootloader mode (at 0x14)
-      Wire.beginTransmission(TWIBOOT_ADDR);
-      uint8_t bootloaderError = Wire.endTransmission();
-      
-      if (bootloaderError == 0) {
-        // Arduino is in bootloader mode - send exit command
-        Serial.println("[I2C] Arduino at 0x14 (bootloader), sending exit command...");
-        
-        // Twiboot protocol: CMD_SWITCH_APPLICATION (0x01) + BOOTTYPE_APPLICATION (0x80)
-        Wire.beginTransmission(TWIBOOT_ADDR);
-        Wire.write(CMD_SWITCH_APPLICATION);  // 0x01 - switch mode command
-        Wire.write(BOOTTYPE_APPLICATION);     // 0x80 - start application
-        uint8_t writeError = Wire.endTransmission();
-        
-        if (writeError == 0) {
-          delay(1000);  // Wait for restart
-          
-          // Verify Arduino moved to 0x30
-          Wire.beginTransmission(I2C_LED_ADDR);
-          uint8_t verifyError = Wire.endTransmission();
-          
-          if (verifyError == 0) {
-            doc["success"] = true;
-            doc["message"] = "Arduino is gereset";
-            Serial.println("[I2C] Arduino reset successful - now at 0x30");
-          } else {
-            doc["success"] = false;
-            doc["error"] = "Reset commando werkt niet";
-            doc["hint"] = "Arduino reageert niet op reset commando. Probeer powercycle.";
-            Serial.println("[I2C] Reset failed - Arduino not at 0x30");
-          }
-        } else {
-          doc["success"] = false;
-          doc["error"] = "Failed to exit bootloader (I2C error: " + String(writeError) + ")";
-          Serial.println("[I2C] Failed to exit bootloader (error: " + String(writeError) + ")");
-        }
-      } else {
-        // Check if Arduino is in application mode (at 0x30)
-        Wire.beginTransmission(I2C_LED_ADDR);
-        uint8_t appError = Wire.endTransmission();
-        
-        if (appError == 0) {
-          // Arduino is at 0x30 - send reset command
-          // Using 0xFF as generic reset register (if Arduino supports it)
-          Wire.beginTransmission(I2C_LED_ADDR);
-          Wire.write(0xFF);  // Reset command register
-          Wire.write(0xAA);  // Reset confirmation code
-          uint8_t writeError = Wire.endTransmission();
-          
-          if (writeError == 0) {
-            delay(1000);  // Wait for restart
-            
-            // Verify Arduino is still at 0x30 after reset
-            Wire.beginTransmission(I2C_LED_ADDR);
-            uint8_t verifyError = Wire.endTransmission();
-            
-            if (verifyError == 0) {
-              doc["success"] = true;
-              doc["message"] = "Arduino is gereset";
-              Serial.println("[I2C] Arduino reset successful");
-            } else {
-              doc["success"] = false;
-              doc["error"] = "Reset commando werkt niet";
-              doc["hint"] = "Arduino reageert niet. Probeer powercycle.";
-              Serial.println("[I2C] Reset failed - Arduino not responding");
-            }
-          } else {
-            doc["success"] = false;
-            doc["error"] = "Failed to send reset command (I2C error: " + String(writeError) + ")";
-            Serial.println("[I2C] Failed to send reset (error: " + String(writeError) + ")");
-          }
-        } else {
-          doc["success"] = false;
-          doc["error"] = "Arduino not found at 0x30 or 0x14";
-          doc["hint"] = "Check Arduino power and I2C connection";
-          Serial.println("[I2C] Arduino not found at either address");
-        }
-      }
-
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
+      // OLD CODE - DO NOT USE
     });
+    */
     
     // API: Get device register dump
     server.on("/api/i2c/registers", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -1354,7 +1113,14 @@ void setup() {
         return;
       }
       
+      if (!request->hasParam("bus")) {
+        request->send(400, "application/json", "{\"error\":\"Missing bus parameter\"}");
+        return;
+      }
+      
       uint8_t address = request->getParam("address")->value().toInt();
+      uint8_t busNum = request->getParam("bus")->value().toInt();
+      I2CBus bus = (busNum == 0) ? I2C_BUS_SLAVE : I2C_BUS_DISPLAY;
       
       JsonDocument doc;
       JsonArray registers = doc["registers"].to<JsonArray>();
@@ -1366,30 +1132,32 @@ void setup() {
       
       // Test device response
       responseStart = micros();
-      Wire.beginTransmission(address);
-      uint8_t testError = Wire.endTransmission();
+      bool devicePresent = I2CManager::getInstance().ping(address, bus);
       responseTime = (micros() - responseStart) / 1000;
       
-      if (testError == 0) {
+      if (devicePresent) {
         // Device responded, try to read registers
         for (uint16_t reg = 0; reg < 256; reg++) {
-          Wire.beginTransmission(address);
-          Wire.write(reg);
-          uint8_t error = Wire.endTransmission(false); // Keep connection open
+          uint8_t value = 0xFF;
           
-          if (error == 0) {
-            Wire.requestFrom(address, (uint8_t)1);
-            if (Wire.available()) {
-              registers.add(Wire.read());
-            } else {
-              registers.add(0xFF); // No data available
-              errorCount++;
-            }
+          // Try to read register via I2CManager
+          bool success = false;
+          if (bus == I2C_BUS_SLAVE) {
+            success = I2CManager::getInstance().readRegister(address, (uint8_t)reg, value, 50);
           } else {
-            registers.add(0xFF); // Error reading
+            // For display bus, use manual write-then-read
+            uint8_t regAddr = (uint8_t)reg;
+            if (I2CManager::getInstance().displayWrite(address, &regAddr, 1, 50)) {
+              success = I2CManager::getInstance().displayRead(address, &value, 1, 50);
+            }
+          }
+          
+          if (!success) {
+            value = 0xFF;
             errorCount++;
           }
           
+          registers.add(value);
           yield(); // Prevent watchdog timeout
         }
       } else {
@@ -1401,7 +1169,7 @@ void setup() {
       // Metrics
       doc["scanDuration"] = scanDuration;
       doc["responseTime"] = responseTime;
-      doc["busSpeed"] = 100; // Default I2C speed (can be read from Wire if needed)
+      doc["busSpeed"] = 100; // Both buses: 100kHz
       doc["errors"] = errorCount;
       
       String response;
@@ -1604,10 +1372,10 @@ void setup() {
     delay(100);
     
     // Show connecting message on OLED
-    display.clear();
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0, 16, "WiFi - Manager");
-    display.display();
+    DisplayManager::getInstance().clear();
+    DisplayManager::getInstance().setTextAlignment(TEXT_ALIGN_LEFT);
+    DisplayManager::getInstance().drawString(0, 16, "WiFi - Manager");
+    DisplayManager::getInstance().updateDisplay();
     
     // NULL sets an open Access Point
     WiFi.softAP("ESP-WIFI-MANAGER", NULL);
@@ -1769,8 +1537,8 @@ void setup() {
 void handleDisplayTasks() {
   // Non-blocking IP display clear after timeout
   if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > DISPLAY_IP_SHOW_DURATION)) {
-    display.clear();
-    display.display();
+    DisplayManager::getInstance().clear();
+    DisplayManager::getInstance().updateDisplay();
     ipDisplayCleared = true;
   }
 }
@@ -1801,6 +1569,9 @@ void handleSystemTasks() {
 // ============================================================================
 
 void loop() {
+  // Update GPIO states (buttons, switch, LED animations)
+  GPIOManager::getInstance().update();
+  
   handleDisplayTasks();
   handleSystemTasks();
   handleNetworkTasks();
@@ -1812,10 +1583,10 @@ void loop() {
 // Function to show reboot message and restart
 void performReboot() {
   Serial.println("Showing reboot message on display");
-  display.clear();
-  display.invertDisplay();  // Yellow background
-  display.drawString(0, 26, "Rebooting...");
-  display.display();
+  DisplayManager::getInstance().clear();
+  DisplayManager::getInstance().invert(true);  // Invert colors
+  DisplayManager::getInstance().drawString(0, 26, "Rebooting...");
+  DisplayManager::getInstance().updateDisplay();
   Serial.println("Reboot message displayed");
   delay(2000);
   Serial.println("Executing restart...");

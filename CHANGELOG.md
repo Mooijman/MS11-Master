@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.12] - 2026-02-09
+
+### Changed
+- **I2C Bus 0 to Standard Pins**: Migrated Slave I2C bus to XIAO ESP32-S3 standard I2C pins
+  - Bus 0 (Slave): Changed from GPIO6/7 to **GPIO5 (D4) SDA + GPIO6 (D5) SCL** @ 100kHz
+  - Bus 1 (Display): Remains GPIO8 (D9) SDA + GPIO9 (D10) SCL @ 100kHz
+  - Both buses now run at 100kHz for optimal reliability
+  - Benefits: Better hardware support, Arduino Wire library compatibility, easier debugging
+  - GPIO7 (D8) now available for other purposes
+  - Bus assignment preserved: Slave on Bus 0 (critical), Displays on Bus 1 (non-critical)
+
+- **I2C Scanner Improvements**: `/api/i2c/scan` endpoint now scans both buses separately
+  - Separate sections for Bus 0 (Slave) and Bus 1 (Display)
+  - Shows bus info: pins, speed, device count per bus
+  - Device details include bus identification
+  - Register dumps work correctly for both buses
+
+### Technical Details
+- Updated: `i2c_manager.cpp`, `config.h`, all wiring documentation
+- Standard I2C pins provide dedicated peripheral routing and improved reliability
+- No functional changes to application logic, only pin assignments
+
 ## [2026.1.1.11] - 2026-02-07
 
 ### Fixed
@@ -145,6 +167,7 @@ All notable changes to this project will be documented in this file.
   - Board configuration: `seeed_xiao_esp32s3` with 921600 baud upload speed
   - Optimized partition table: `partitions_xiao_s3.csv` (1.92MB × 2 OTA + 512KB LittleFS)
   - GPIO pin update: I2C on GPIO6 (SDA/D5) and GPIO7 (SCL/D6)
+    _(Note: Changed to standard I2C pins GPIO5/6 in 2026.1.1.12 - see Unreleased)_
   - Documentation: XIAO_S3_SETUP.md with complete implementation guide
 
 ### Changed

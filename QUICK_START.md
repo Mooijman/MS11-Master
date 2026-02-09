@@ -68,13 +68,18 @@ data/settings.html (Web UI)
 
 ## 🔌 Hardware Pinout (XIAO S3)
 
-| Function | GPIO | Label |
-|----------|------|-------|
-| OLED SDA | GPIO6 | D5 |
-| OLED SCL | GPIO7 | D6 |
-| UART TX | GPIO43 | D7 |
-| UART RX | GPIO44 | D8 |
-| USB | USB-C | — |
+| Function | GPIO | Label | Notes |
+|----------|------|-------|-------|
+| **I2C Bus 0 (Slave @ 100kHz)** | | | Standard I2C |
+| Slave SDA | GPIO5 | D4 | ⭐ Default I2C SDA |
+| Slave SCL | GPIO6 | D5 | ⭐ Default I2C SCL |
+| **I2C Bus 1 (Display @ 100kHz)** | | | |
+| Display SDA | GPIO8 | D9 | |
+| Display SCL | GPIO9 | D10 | |
+| **UART (Optional)** | | | Not used |
+| UART TX | GPIO43 | D6 | |
+| UART RX | GPIO44 | D7 | |
+| **Power** | USB-C | — | 5V input |
 
 ## 📡 Web Interface Routes
 

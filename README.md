@@ -51,7 +51,8 @@ XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA 
    - `app0` (OTA_0): 0x10000 - 0x1FFFFF (1.9MB)
    - `app1` (OTA_1): 0x200000 - 0x3EFFFF (1.9MB)
    - `littlefs`: 0x3D0000 - 0x44FFFF (512KB)
-- **Display**: SSD1306 OLED I2C (GPIO6=SDA, GPIO7=SCL)
+- **Display**: SSD1306 OLED I2C (Bus 1: GPIO8=SDA, GPIO9=SCL)
+- **Slave**: ATmega328P I2C (Bus 0: GPIO5=SDA, GPIO6=SCL @ 100kHz - standard pins)
 
 ### XIAO S3 Pin Layout
 | Function | GPIO | Silk Label |
