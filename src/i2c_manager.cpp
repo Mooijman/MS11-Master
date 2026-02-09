@@ -4,8 +4,10 @@
 // Private constructor
 I2CManager::I2CManager() {
   // Initialize pointers
-  slaveBus = &Wire;     // I2C0 (default for ESP32)
-  displayBus = &Wire1;  // I2C1 (second I2C interface)
+  // CRITICAL: Slave bus on Wire1 (I2C1), Display bus on Wire (I2C0)
+  // This maps to enum: I2C_BUS_SLAVE=1 (Wire1), I2C_BUS_DISPLAY=0 (Wire)
+  slaveBus = &Wire1;    // I2C1 (GPIO5/6 @ 100kHz - ATmega slave)
+  displayBus = &Wire;   // I2C0 (GPIO8/9 @ 100kHz - Display devices)
 }
 
 I2CManager::~I2CManager() {
@@ -27,34 +29,34 @@ bool I2CManager::begin() {
     return false;
   }
 
-  // Initialize Slave Bus (GPIO8/9 @ 100kHz) - Now used for LCD via LiquidCrystal_I2C
-  // Wire (I2C0) uses GPIO8/9 because LiquidCrystal_I2C doesn't support Wire1
-  // Conservative speed, same as display bus for reliability
-  if (!slaveBus->begin(8, 9, 100000)) {
+  // Initialize Slave Bus (GPIO5/6 @ 100kHz - Wire1/I2C1 - CRITICAL)
+  // ATmega328P slave controller at 0x30
+  // Conservative speed for reliability
+  if (!slaveBus->begin(5, 6, 100000)) {
     setError(I2C_ERROR_NOT_INIT);
-    Serial.println("[I2CManager] ERROR: Failed to initialize Slave Bus (GPIO8/9)");
+    Serial.println("[I2CManager] ERROR: Failed to initialize Slave Bus (GPIO5/6)");
     vSemaphoreDelete(slaveMutex);
     vSemaphoreDelete(displayMutex);
     return false;
   }
   
-  slaveBus->setTimeout(100);  // 100ms timeout per transaction
-  Serial.println("[I2CManager] ✓ Slave Bus initialized (GPIO8/9 @ 100kHz - LCD via Wire)");
+  slaveBus->setTimeout(100);  // 100ms timeout for critical slave
+  Serial.println("[I2CManager] ✓ Slave Bus initialized (Wire1, GPIO5/6 @ 100kHz - ATmega328P @ 0x30)");
 
-  // Initialize Display Bus (GPIO5/6 @ 100kHz) - ATmega slave and other I2C_TWO devices
-  // Wire1 (I2C1) uses GPIO5/6 for devices that support I2C_TWO selection
-  // Non-critical: Conservative speed for reliability
-  if (!displayBus->begin(5, 6, 100000)) {
+  // Initialize Display Bus (GPIO8/9 @ 100kHz - Wire/I2C0 - NON-CRITICAL)
+  // LCD (0x27), OLED (0x3C), Seesaw (0x36), and other display devices
+  // Conservative speed for reliability
+  if (!displayBus->begin(8, 9, 100000)) {
     setError(I2C_ERROR_NOT_INIT);
-    Serial.println("[I2CManager] ERROR: Failed to initialize Display Bus (GPIO5/6)");
+    Serial.println("[I2CManager] ERROR: Failed to initialize Display Bus (GPIO8/9)");
     slaveBus->end();
     vSemaphoreDelete(slaveMutex);
     vSemaphoreDelete(displayMutex);
     return false;
   }
   
-  displayBus->setTimeout(50);  // 50ms timeout for display
-  Serial.println("[I2CManager] ✓ Display Bus initialized (GPIO5/6 @ 100kHz - Wire1)");
+  displayBus->setTimeout(50);  // 50ms timeout for display (non-critical)
+  Serial.println("[I2CManager] ✓ Display Bus initialized (Wire, GPIO8/9 @ 100kHz - LCD/OLED/Seesaw)");
 
   initialized = true;
   setError(I2C_OK);

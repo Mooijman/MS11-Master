@@ -1030,14 +1030,14 @@ void setup() {
       
       JsonDocument doc;
       
-      // Scan Bus 0 (Slave Bus - GPIO5/6 @ 100kHz)
+      // Scan Bus 0 (Display Bus - GPIO8/9 @ 100kHz)
       JsonArray bus0Devices = doc["bus0"]["devices"].to<JsonArray>();
-      doc["bus0"]["name"] = "Bus 0: Slave (GPIO5/6 @ 100kHz)";
+      doc["bus0"]["name"] = "Bus 0: Display (GPIO8/9 @ 100kHz)";
       doc["bus0"]["speed"] = "100 kHz";
-      doc["bus0"]["pins"] = "GPIO5(SDA), GPIO6(SCL)";
+      doc["bus0"]["pins"] = "GPIO8(SDA), GPIO9(SCL)";
       
       for (uint8_t address = 0x03; address < 0x78; address++) {
-        if (I2CManager::getInstance().ping(address, I2C_BUS_SLAVE)) {
+        if (I2CManager::getInstance().ping(address, I2C_BUS_DISPLAY)) {
           JsonObject device = bus0Devices.add<JsonObject>();
           
           char hexAddr[5];
@@ -1048,8 +1048,13 @@ void setup() {
           
           // Add device name if known
           String deviceName = "Unknown";
-          if (address == 0x30) deviceName = "MS11 Slave Controller (ATmega328P)";
-          else if (address == 0x14) deviceName = "Twiboot Bootloader (ATmega328P)";
+          if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED Display";
+          else if (address == 0x27 || address == 0x3F) deviceName = "PCF8574 LCD 16x2";
+          else if (address == 0x36) deviceName = "Seesaw Rotary Encoder";
+          else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280 Sensor";
+          else if (address == 0x68) deviceName = "MPU6050/DS3231 RTC";
+          else if (address == 0x48) deviceName = "ADS1115 ADC";
+          else if (address == 0x20) deviceName = "PCF8574 I/O Expander";
           
           device["name"] = deviceName;
         }
@@ -1057,14 +1062,14 @@ void setup() {
       }
       doc["bus0"]["count"] = bus0Devices.size();
       
-      // Scan Bus 1 (Display Bus - GPIO8/9 @ 100kHz)
+      // Scan Bus 1 (Slave Bus - GPIO5/6 @ 100kHz)
       JsonArray bus1Devices = doc["bus1"]["devices"].to<JsonArray>();
-      doc["bus1"]["name"] = "Bus 1: Display (GPIO8/9 @ 100kHz)";
+      doc["bus1"]["name"] = "Bus 1: Slave (GPIO5/6 @ 100kHz)";
       doc["bus1"]["speed"] = "100 kHz";
-      doc["bus1"]["pins"] = "GPIO8(SDA), GPIO9(SCL)";
+      doc["bus1"]["pins"] = "GPIO5(SDA), GPIO6(SCL)";
       
       for (uint8_t address = 0x03; address < 0x78; address++) {
-        if (I2CManager::getInstance().ping(address, I2C_BUS_DISPLAY)) {
+        if (I2CManager::getInstance().ping(address, I2C_BUS_SLAVE)) {
           JsonObject device = bus1Devices.add<JsonObject>();
           
           char hexAddr[5];
@@ -1075,13 +1080,8 @@ void setup() {
           
           // Add device name if known
           String deviceName = "Unknown";
-          if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED Display";
-          else if (address == 0x27 || address == 0x3F) deviceName = "PCF8574 LCD 16x2";
-          else if (address == 0x36) deviceName = "Seesaw Rotary Encoder";
-          else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280 Sensor";
-          else if (address == 0x68) deviceName = "MPU6050/DS3231 RTC";
-          else if (address == 0x48) deviceName = "ADS1115 ADC";
-          else if (address == 0x20) deviceName = "PCF8574 I/O Expander";
+          if (address == 0x30) deviceName = "MS11 Slave Controller (ATmega328P)";
+          else if (address == 0x14) deviceName = "Twiboot Bootloader (ATmega328P)";
           
           device["name"] = deviceName;
         }
@@ -1162,7 +1162,7 @@ void setup() {
       
       uint8_t address = request->getParam("address")->value().toInt();
       uint8_t busNum = request->getParam("bus")->value().toInt();
-      I2CBus bus = (busNum == 0) ? I2C_BUS_SLAVE : I2C_BUS_DISPLAY;
+      I2CBus bus = (busNum == 0) ? I2C_BUS_DISPLAY : I2C_BUS_SLAVE;
       
       JsonDocument doc;
       JsonArray registers = doc["registers"].to<JsonArray>();
@@ -1184,14 +1184,14 @@ void setup() {
           
           // Try to read register via I2CManager
           bool success = false;
-          if (bus == I2C_BUS_SLAVE) {
-            success = I2CManager::getInstance().readRegister(address, (uint8_t)reg, value, 50);
-          } else {
+          if (bus == I2C_BUS_DISPLAY) {
             // For display bus, use manual write-then-read
             uint8_t regAddr = (uint8_t)reg;
             if (I2CManager::getInstance().displayWrite(address, &regAddr, 1, 50)) {
               success = I2CManager::getInstance().displayRead(address, &value, 1, 50);
             }
+          } else {
+            success = I2CManager::getInstance().readRegister(address, (uint8_t)reg, value, 50);
           }
           
           if (!success) {
