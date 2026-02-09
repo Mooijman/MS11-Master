@@ -220,7 +220,7 @@ void setup() {
     delay(100);
     LCDManager::getInstance().printLine(0, "*MagicSmoker 11*");
     delay(100);
-    LCDManager::getInstance().printLine(1, ".**Starting...**");
+    LCDManager::getInstance().printLine(1, "**Starting... **");
     Serial.println("Startup message sent to LCD");
   }
   Serial.println("=== LCD Manager initialization complete ===\n");
@@ -318,16 +318,19 @@ void setup() {
     DisplayManager::getInstance().drawString(0, 42, "fs-" + currentFilesystemVersion);
     DisplayManager::getInstance().updateDisplay();
     
-    // Show IP address on LCD (16x2 display)
+    // Show SSID and IP address on LCD (16x2 display)
     Serial.println("Updating LCD with WiFi info...");
     LCDManager::getInstance().clear();
     delay(150);
-    String ipStr = WiFi.localIP().toString();
-    // Truncate to 16 chars for LCD
-    String ipDisplay = ipStr.length() > 16 ? ipStr.substring(0, 16) : ipStr;
-    LCDManager::getInstance().printLine(0, ipDisplay);
+    // Show SSID on line 0
+    String currentSsid = WiFi.SSID();
+    String ssidDisplay = currentSsid.length() > 16 ? currentSsid.substring(0, 16) : currentSsid;
+    LCDManager::getInstance().printLine(0, ssidDisplay);
     delay(100);
-    LCDManager::getInstance().printLine(1, "Wifi OK!");
+    // Show IP on line 1
+    String ipStr = WiFi.localIP().toString();
+    String ipDisplay = ipStr.length() > 16 ? ipStr.substring(0, 16) : ipStr;
+    LCDManager::getInstance().printLine(1, ipDisplay);
     Serial.println("WiFi info sent to LCD");
     Serial.println("LCD updated with WiFi info");
     delay(200);
@@ -1418,8 +1421,11 @@ void setup() {
     
     // Show AP mode on LCD
     LCDManager::getInstance().clear();
+    delay(100);
     LCDManager::getInstance().printLine(0, "WiFi manager");
-    LCDManager::getInstance().printLine(1, "ESP-WIFI-MGR");
+    delay(100);
+    // Show AP SSID on line 1
+    LCDManager::getInstance().printLine(1, "ESP-WIFI-MANAGER");
     
     // NULL sets an open Access Point
     WiFi.softAP("ESP-WIFI-MANAGER", NULL);
@@ -1595,9 +1601,9 @@ void handleDisplayTasks() {
       if (LCDManager::getInstance().isInitialized()) {
         LCDManager::getInstance().clear();
         delay(100);
-        LCDManager::getInstance().printLine(0, "MS11 Ready");
+        LCDManager::getInstance().printLine(0, "Ready...");
         delay(50);
-        LCDManager::getInstance().printLine(1, "fw-" + currentFirmwareVersion);
+        LCDManager::getInstance().printLine(1, "");
         Serial.println("LCD updated with status");
         lcdStatusShown = true;
       } else {

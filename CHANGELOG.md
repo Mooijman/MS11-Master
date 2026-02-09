@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.1.1.15] - 2026-02-09
+
+### Changed
+- **LCD Display Content**: Updated display layout and formatting
+  - Boot phase: `*MagicSmoker 11*` / `**Starting... **` (two asterisks, space-space format)
+  - WiFi connected: Shows `[SSID]` on line 0, `[IP address]` on line 1
+  - WiFi Manager mode: Shows `WiFi manager` on line 0, `ESP-WIFI-MANAGER` on line 1
+  - Ready state: Shows `Ready...` on line 0, blank on line 1
+
 ## [2026.1.1.14] - 2026-02-09
 
 ### Changed
