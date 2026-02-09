@@ -4,3 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 .fs_backup/
+data/global.conf
+*.conf
