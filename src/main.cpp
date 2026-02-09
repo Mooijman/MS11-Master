@@ -655,25 +655,27 @@ void setup() {
         }
       }
       
-      // FW Version
-      if (request->hasParam("fw_version", true)) {
-        String newFwVersion = request->getParam("fw_version", true)->value();
-        newFwVersion.trim();
-        if (newFwVersion != currentFirmwareVersion) {
-          currentFirmwareVersion = newFwVersion;
-          configChanged = true;
-          Serial.println("FW version changed to: " + currentFirmwareVersion);
+      // FW Version (debug only)
+      if (debugEnabled == "on" || debugEnabled == "true") {
+        if (request->hasParam("fw_version", true)) {
+          String newFwVersion = request->getParam("fw_version", true)->value();
+          newFwVersion.trim();
+          if (newFwVersion != currentFirmwareVersion) {
+            currentFirmwareVersion = newFwVersion;
+            configChanged = true;
+            Serial.println("FW version changed to: " + currentFirmwareVersion);
+          }
         }
-      }
-      
-      // FS Version
-      if (request->hasParam("fs_version", true)) {
-        String newFsVersion = request->getParam("fs_version", true)->value();
-        newFsVersion.trim();
-        if (newFsVersion != currentFilesystemVersion) {
-          currentFilesystemVersion = newFsVersion;
-          configChanged = true;
-          Serial.println("FS version changed to: " + currentFilesystemVersion);
+        
+        // FS Version (debug only)
+        if (request->hasParam("fs_version", true)) {
+          String newFsVersion = request->getParam("fs_version", true)->value();
+          newFsVersion.trim();
+          if (newFsVersion != currentFilesystemVersion) {
+            currentFilesystemVersion = newFsVersion;
+            configChanged = true;
+            Serial.println("FS version changed to: " + currentFilesystemVersion);
+          }
         }
       }
       
@@ -1221,7 +1223,6 @@ void setup() {
     
     // API: Get update status
     server.on("/api/update/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      settings.syncVersions();
       String response = githubUpdater->handleStatusRequest(
         currentFirmwareVersion, 
         currentFilesystemVersion,
