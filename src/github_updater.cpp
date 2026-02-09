@@ -96,6 +96,7 @@ bool GitHubUpdater::checkGitHubRelease(const String& updateUrl, const String& gi
   
   http.begin(client, apiUrl);
   http.addHeader("User-Agent", "ESP32-OTA-Client");
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   
   if (githubToken && githubToken.length() > 0) {
     http.addHeader("Authorization", "token " + githubToken);
@@ -129,7 +130,7 @@ bool GitHubUpdater::checkGitHubRelease(const String& updateUrl, const String& gi
     
     for (JsonObject asset : assets) {
       String name = asset["name"].as<String>();
-      String downloadUrl = asset["url"].as<String>();
+      String downloadUrl = asset["browser_download_url"].as<String>();
       
       if (name.startsWith("fw-") && name.endsWith(".bin")) {
         updateInfo.firmwareUrl = downloadUrl;
