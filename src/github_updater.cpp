@@ -110,7 +110,7 @@ bool GitHubUpdater::checkGitHubRelease(const String& updateUrl, const String& gi
   if (httpCode == 200) {
     String payload = http.getString();
     
-    DynamicJsonDocument doc(4096);
+    DynamicJsonDocument doc(16384);  // Increased from 4096 to handle full GitHub API response
     DeserializationError error = deserializeJson(doc, payload);
     
     if (error) {
