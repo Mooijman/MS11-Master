@@ -165,8 +165,8 @@ void Settings::updateVersions() {
 }
 
 // Sync version from compile-time defines with NVS storage
-// Only updates if firmware was actually rebuilt (new compile-time version differs from stored version)
-// This preserves debug version changes across reboots
+// Only updates if firmware was actually UPGRADED (new compile-time version is NEWER than stored version)
+// This allows OTA updates to take effect while still detecting firmware rebuilds in development
 void Settings::syncVersions() {
     String compiledFw = getCompiledFirmwareVersion();
     String compiledFs = getCompiledFilesystemVersion();
@@ -175,22 +175,55 @@ void Settings::syncVersions() {
     bool fsUpdated = false;
     
     // Check if STORED version differs from COMPILED version
-    // If different, firmware was rebuilt and should overwrite any debug changes
     preferences.begin(NVS_NAMESPACE_CONFIG, true);
     String storedFw = preferences.getString("fw_version", "");
     String storedFs = preferences.getString("fs_version", "");
     preferences.end();
     
-    if (storedFw != compiledFw) {
-        Serial.println("[Settings] Firmware rebuild detected: " + storedFw + " -> " + compiledFw);
+    // For firmware: only override if compiled version is NEWER (not on mismatch)
+    if (storedFw.length() == 0) {
+        // No stored version yet - use compiled version
+        Serial.println("[Settings] No stored firmware version - using compiled version: " + compiledFw);
         firmwareVersion = compiledFw;
         fwUpdated = true;
+    } else if (storedFw != compiledFw) {
+        // Versions differ - check if compiled is newer
+        if (compareVersions(compiledFw, storedFw)) {
+            // Compiled version is newer - this is a rebuild/upgrade
+            Serial.println("[Settings] Firmware rebuild detected: " + storedFw + " -> " + compiledFw);
+            firmwareVersion = compiledFw;
+            fwUpdated = true;
+        } else {
+            // Stored version is same/newer - keep OTA update, use stored version
+            Serial.println("[Settings] OTA version detected, keeping: " + storedFw + " (compiled: " + compiledFw + ")");
+            firmwareVersion = storedFw;
+        }
+    } else {
+        // Versions match - keep stored version
+        firmwareVersion = storedFw;
     }
     
-    if (storedFs != compiledFs) {
-        Serial.println("[Settings] Filesystem rebuild detected: " + storedFs + " -> " + compiledFs);
+    // For filesystem: only override if compiled version is NEWER (not on mismatch)
+    if (storedFs.length() == 0) {
+        // No stored version yet - use compiled version
+        Serial.println("[Settings] No stored filesystem version - using compiled version: " + compiledFs);
         filesystemVersion = compiledFs;
         fsUpdated = true;
+    } else if (storedFs != compiledFs) {
+        // Versions differ - check if compiled is newer
+        if (compareVersions(compiledFs, storedFs)) {
+            // Compiled version is newer - this is a rebuild/upgrade
+            Serial.println("[Settings] Filesystem rebuild detected: " + storedFs + " -> " + compiledFs);
+            filesystemVersion = compiledFs;
+            fsUpdated = true;
+        } else {
+            // Stored version is same/newer - keep OTA update, use stored version
+            Serial.println("[Settings] OTA version detected, keeping: " + storedFs + " (compiled: " + compiledFs + ")");
+            filesystemVersion = storedFs;
+        }
+    } else {
+        // Versions match - keep stored version
+        filesystemVersion = storedFs;
     }
     
     if (fwUpdated || fsUpdated) {
@@ -331,6 +364,34 @@ String Settings::getCompiledFirmwareVersion() {
 String Settings::getCompiledFilesystemVersion() {
     String ver = String(FILESYSTEM_VERSION);
     return ver.substring(3);  // Remove "fs-" prefix
+}
+
+// Helper: Compare semantic versions (e.g., "2026.1.1.19" > "2026.1.1.18")
+// Returns true if remoteVer > currentVer
+bool Settings::compareVersions(String remoteVer, String currentVer) {
+    if (remoteVer.length() == 0 || currentVer.length() == 0) return false;
+    
+    // Strip prefixes for comparison: fw-, fs-
+    String remote = remoteVer;
+    String current = currentVer;
+    
+    // Remove version prefixes (fw- and fs- only, no v prefix expected)
+    if (remote.startsWith("fw-")) remote = remote.substring(3);
+    if (remote.startsWith("fs-")) remote = remote.substring(3);
+    
+    if (current.startsWith("fw-")) current = current.substring(3);
+    if (current.startsWith("fs-")) current = current.substring(3);
+    
+    // Format: 2026.1.1.00 (dotted format only)
+    int r0 = 0, r1 = 0, r2 = 0, r3 = 0;
+    int c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+    if (sscanf(remote.c_str(), "%d.%d.%d.%d", &r0, &r1, &r2, &r3) != 4) return false;
+    if (sscanf(current.c_str(), "%d.%d.%d.%d", &c0, &c1, &c2, &c3) != 4) return false;
+
+    if (r0 != c0) return r0 > c0;
+    if (r1 != c1) return r1 > c1;
+    if (r2 != c2) return r2 > c2;
+    return r3 > c3;
 }
 
 // Boot time helpers (debug mode)

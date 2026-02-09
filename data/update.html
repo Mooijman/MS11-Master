@@ -134,7 +134,7 @@
     }
     
     function updateStatus() {
-      fetch('/api/update/status')
+      fetch('/api/update/status', { timeout: 5000 })
         .then(response => {
           if (!response.ok) {
             throw new Error('HTTP ' + response.status + ': ' + response.statusText);
@@ -285,11 +285,19 @@
           if (forcedUpdateInProgress && !deviceRebooting) {
             rebootDetectionCount++;
             console.log('Connection lost during update (count: ' + rebootDetectionCount + '), device rebooting...');
-            // First connection error = device is rebooting, redirect immediately to confirm page
-            console.log('Reboot detected, redirecting to success page...');
-            deviceRebooting = true;
-            stopPolling();
-            window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
+            
+            // After first connection loss, assume device is restarting
+            // Wait a bit then redirect to success page so device can come back online
+            if (rebootDetectionCount === 1) {
+              console.log('First connection loss detected, waiting for device to restart...');
+              stopPolling();
+              // Wait 3 seconds for device to restart, then redirect
+              setTimeout(() => {
+                console.log('Redirecting to success page after device restart...');
+                deviceRebooting = true;
+                window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
+              }, 3000);
+            }
           }
         });
     }
@@ -310,7 +318,7 @@
     function checkForUpdate() {
       console.log('checkForUpdate() called');
       console.log('Fetching /api/update/check');
-      fetch('/api/update/check', { method: 'POST' })
+      fetch('/api/update/check', { method: 'POST', timeout: 5000 })
         .then(response => {
           console.log('Check response status:', response.status, response.statusText);
           if (!response.ok) {
@@ -324,7 +332,11 @@
         })
         .catch(error => {
           console.error('Check error:', error);
-          alert('Check for update failed: ' + error.message);
+          // Silently handle errors during normal operation
+          // Only show alert if not in update progress
+          if (!forcedUpdateInProgress) {
+            console.warn('Failed to check for updates (network may be unavailable)');
+          }
         });
     }
     
@@ -343,7 +355,8 @@
       fetch('/api/update/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'type=' + type
+        body: 'type=' + type,
+        timeout: 10000
       })
       .then(response => {
         console.log('Install response status:', response.status, response.statusText);
@@ -355,21 +368,26 @@
       .then(data => {
         console.log('Response data:', data);
         if (data.rebootRequired) {
-          console.log('Reboot required, redirecting to success page immediately');
-          stopPolling();
-          window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
+          console.log('Reboot required, switching to polling mode...');
+          // Device will reboot, connection will be lost
+          // updateStatus polling will detect this and redirect
         } else if (!data.success) {
           console.error('Update failed:', data.message);
+          forcedUpdateInProgress = false;
+          stopPolling();
           alert('Update failed: ' + data.message);
           document.getElementById('update-warning').style.display = 'none';
-          stopPolling();
         }
       })
       .catch(error => {
         console.error('Update error:', error);
-        alert('Update error: ' + error.message);
-        document.getElementById('update-warning').style.display = 'none';
-        stopPolling();
+        // If we get an error, device might be restarting already
+        // Keep polling to detect when it comes back online
+        if (!forcedUpdateInProgress) {
+          stopPolling();
+          alert('Update error: ' + error.message);
+          document.getElementById('update-warning').style.display = 'none';
+        }
       });
     }
     
@@ -391,7 +409,8 @@
       fetch('/api/update/reinstall', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'type=' + type
+        body: 'type=' + type,
+        timeout: 10000
       })
       .then(response => {
         console.log('Reinstall response status:', response.status, response.statusText);
@@ -403,21 +422,26 @@
       .then(data => {
         console.log('Response data:', data);
         if (data.rebootRequired) {
-          console.log('Reboot required, redirecting to success page immediately');
-          stopPolling();
-          window.location.href = '/confirm.html?message=%E2%9C%85%20Update%20Successful!&type=success';
+          console.log('Reboot required, switching to polling mode...');
+          // Device will reboot, connection will be lost
+          // updateStatus polling will detect this and redirect
         } else if (!data.success) {
           console.error('Reinstall failed:', data.message);
+          forcedUpdateInProgress = false;
+          stopPolling();
           alert('Reinstall failed: ' + data.message);
           document.getElementById('update-warning').style.display = 'none';
-          stopPolling();
         }
       })
       .catch(error => {
         console.error('Reinstall error:', error);
-        alert('Reinstall error: ' + error.message);
-        document.getElementById('update-warning').style.display = 'none';
-        stopPolling();
+        // If we get an error, device might be restarting already
+        // Keep polling to detect when it comes back online
+        if (!forcedUpdateInProgress) {
+          stopPolling();
+          alert('Reinstall error: ' + error.message);
+          document.getElementById('update-warning').style.display = 'none';
+        }
       });
     }
     

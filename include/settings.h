@@ -96,6 +96,10 @@ public:
     // Helper: Convert string to boolean
     static bool stringToBool(const String& value);
     
+    // Helper: Compare semantic versions (e.g., "2026.1.1.19" > "2026.1.1.18")
+    // Returns true if remoteVer > currentVer
+    static bool compareVersions(String remoteVer, String currentVer);
+    
     // Print current settings to Serial
     void print();
 
