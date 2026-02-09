@@ -7,6 +7,12 @@
 
 ## ⭐ Key Changes
 
+### 🐛 Bug Fixes
+- **Fixed GitHub firmware update**: Corrected asset URL extraction from GitHub API
+  - Changed `asset["url"]` → `asset["browser_download_url"]` to get actual download URLs
+  - Added HTTP redirect support (HTTPC_FORCE_FOLLOW_REDIRECTS) to handle GitHub API redirects
+  - Fixes HTTP 302 errors during automatic update checks
+
 ### I2C Bus Migration to Standard Pins
 Bus 0 (Slave controller) migrated to **standard I2C pins** for better hardware support:
 - **Bus 0**: GPIO5 (SDA) + GPIO6 (SCL) @ 100kHz - Slave controller (0x30)
@@ -31,6 +37,7 @@ The I2C scanner page (`/i2c.html`) now shows both buses separately:
 ## 🔧 Technical Details
 
 ### Files Changed
+- `src/github_updater.cpp`: Fixed GitHub API asset URL handling
 - `i2c_manager.cpp`: Both buses initialized @ 100kHz
 - `config.h`: Version bump + bus configuration
 - `main.cpp`: Dual-bus scan API endpoints
