@@ -2,13 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2026.1.1.19] - 2026-02-10
+## [2026.2.10.02] - 2026-02-10
 
-### Fixed
-- **Software Update Display**: OLED and LCD now display update status during firmware/filesystem downloads
-  - OLED shows: "Updating FW/FS", "Please Wait...", "DO NOT POWER OFF", then "Update done" / "Rebooting..."
-  - LCD shows: "Updating..." during any software update
-  - Previously display remained blank during updates (all display calls were commented out)
+### Added
+- **LCD Real-Time Clock**: Date and time display on LCD line 1 (format: DD-MM-YYYY HH:MM)
+- **Universal Blink Helper**: Reusable `getBlinkState()` function for all blink functionality
+- **Blinking Clock Colon**: 2 Hz blink on time separator for visual feedback
+
+### Removed
+- **GPIO Viewer**: Fully removed from firmware, settings, UI, and build dependencies
+
+### Changed
+- **Date/Time Format**: LCD shows full 4-digit year with zero-padded day
+- **Code Optimization**: Stateless blink helper replaces individual toggle variables
+
+## [2026.2.10.01] - 2026-02-10
+
+  ### Added
+  - **OLED Encoder Counter**: Counter range 90-350 with speed-based step sizes (1/10/50).
+
+  ### Changed
+  - **Seesaw Encoder I2C**: Fully migrated to Adafruit seesaw API (no raw register fallback).
+  - **Encoder Responsiveness**: Faster polling and display refresh throttling for smoother input.
+
+  ### Fixed
+  - **NeoPixel Status**: Restores status color immediately after button blink.
+
+  ## [2026.1.1.19] - 2026-02-10
+
+  ### Fixed
+  - **Software Update Display**: OLED and LCD now display update status during firmware/filesystem downloads
+    - OLED shows: "Updating FW/FS", "Please Wait...", "DO NOT POWER OFF", then "Update done" / "Rebooting..."
+    - LCD shows: "Updating..." during any software update
+    - Previously display remained blank during updates (all display calls were commented out)
 
 ## [2026.1.1.18] - 2026-02-10
 

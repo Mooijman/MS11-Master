@@ -11,7 +11,6 @@
 #define FEATURE_OLED_DISPLAY        // SSD1306 OLED display support
 #define FEATURE_LCD_16X2            // 16x2 LCD with I2C PCF8574 backpack
 #define FEATURE_SEESAW_ROTARY       // Seesaw I2C rotary encoder
-#define FEATURE_GPIO_VIEWER         // Real-time GPIO monitoring (debug)
 
 // File System & Management
 #define FEATURE_FILE_MANAGER        // Web-based LittleFS file manager (debug)
@@ -34,8 +33,8 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026.1.1.20"
-#define FILESYSTEM_VERSION "fs-2026.1.1.20"
+#define FIRMWARE_VERSION "fw-2026.2.10.02"
+#define FILESYSTEM_VERSION "fs-2026.2.10.02"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
@@ -109,10 +108,6 @@
 // Web Server
 #define WEB_SERVER_PORT 80
 
-// GPIO Viewer (optional debug tool)
-#define GPIO_VIEWER_PORT 5555
-#define GPIO_VIEWER_SAMPLING_INTERVAL 100  // milliseconds
-
 // ArduinoOTA
 #define OTA_HOSTNAME "ESP32-Base"
 #define OTA_PORT 3232
@@ -139,7 +134,7 @@
 #define REBOOT_DELAY 2000  // 2 seconds
 
 // Loop delay
-#define LOOP_DELAY 10  // milliseconds
+#define LOOP_DELAY 1  // milliseconds (low for responsive encoder)
 
 // ============================================================================
 // HTTP CLIENT CONFIGURATION
@@ -155,7 +150,6 @@
 
 // Default feature states (security-conscious defaults)
 #define DEFAULT_DEBUG_ENABLED false
-#define DEFAULT_GPIO_VIEWER_ENABLED false
 #define DEFAULT_OTA_ENABLED false
 #define DEFAULT_UPDATES_ENABLED false
 #define DEFAULT_DHCP_ENABLED true
@@ -206,7 +200,6 @@
 
 // Settings form parameters
 #define PARAM_DEBUG "debug"
-#define PARAM_GPIO_VIEWER "gpioviewer"
 #define PARAM_OTA "ota"
 #define PARAM_UPDATES "updates"
 #define PARAM_UPDATE_URL "updateUrl"
@@ -271,7 +264,6 @@
 #define TEMPLATE_SSID "%SSID%"
 #define TEMPLATE_DHCP_CHECKED "%DHCP_CHECKED%"
 #define TEMPLATE_DEBUG_CHECKED "%DEBUG_CHECKED%"
-#define TEMPLATE_GPIO_VIEWER_CHECKED "%GPIOVIEWER_CHECKED%"
 #define TEMPLATE_OTA_CHECKED "%OTA_CHECKED%"
 #define TEMPLATE_UPDATES_CHECKED "%UPDATES_CHECKED%"
 #define TEMPLATE_NTP_CHECKED "%NTP_CHECKED%"

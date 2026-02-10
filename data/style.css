@@ -332,10 +332,6 @@ input[type=submit].btn-full {
   background-color: #252524;
 }
 
-a#gpioViewerBtn:hover {
-  background-color: var(--color-accent-gold) !important;
-}
-
 /* ==========================================
    File Manager Styles
    ========================================== */

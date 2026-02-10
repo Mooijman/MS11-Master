@@ -1,4 +1,3 @@
-#include <gpio_viewer.h> // Must be the first include in your project
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
@@ -23,6 +22,7 @@
 #include "display_manager.h"
 #include "lcd_manager.h"
 #include "seesaw_rotary.h"
+#include "aht10_manager.h"
 #include "gpio_manager.h"
 #include "slave_controller.h"
 #include "github_updater.h"
@@ -32,8 +32,6 @@
 // Global instances
 Preferences preferences;
 
-// GPIO Viewer pointer (only instantiated if enabled)
-GPIOViewer* gpio_viewer = nullptr;
 
 // I2C Managers (use singleton pattern)
 // - I2CManager: Dual-bus I2C controller (Slave @ 100kHz, Display @ 100kHz)
@@ -74,7 +72,6 @@ String& netmask = settings.netmask;
 String& useDHCP = settings.useDHCP;
 String& debugEnabled = settings.debugEnabled;
 String& githubToken = settings.githubToken;
-String& gpioViewerEnabled = settings.gpioViewerEnabled;
 String& otaEnabled = settings.otaEnabled;
 String& updatesEnabled = settings.updatesEnabled;
 String& updateUrl = settings.updateUrl;
@@ -96,6 +93,26 @@ bool ipDisplayCleared = false;
 // Delayed reboot timer
 unsigned long rebootTime = 0;
 bool rebootScheduled = false;
+
+// NeoPixel tracking variables
+unsigned long lastNeopixelUpdate = 0;
+unsigned long blinkStartTime = 0;
+uint32_t currentNeopixelColor = 0;  // Current status color
+uint32_t blinkColor = 0;
+uint32_t blinkResumeColor = 0;
+uint8_t blinkPhases = 0;
+uint16_t blinkPhaseDurationMs = 0;
+bool blinkActive = false;
+bool neoPixelInitializedFlag = false;  // Track if NeoPixel was initialized
+
+// Encoder counter variables
+int32_t encoderCounter = 90;  // Counter value (90-350)
+int32_t lastEncoderPosition = 0;
+unsigned long lastCounterUpdate = 0;
+bool counterDisplayNeedsUpdate = true;
+
+// LCD time display tracking
+unsigned long lastLcdTimeUpdate = 0;
 
 // Forward declaration
 void performReboot();
@@ -128,6 +145,13 @@ String jsonEscape(String str) {
     }
   }
   return result;
+}
+
+// Universal blink state helper
+// Returns true/false based on current time and blink interval
+// Example: getBlinkState(millis(), 500) = 2 Hz blink (toggles every 500ms)
+bool getBlinkState(unsigned long currentMillis, unsigned long intervalMs) {
+  return ((currentMillis / intervalMs) % 2) == 0;
 }
 
 // NTP time sync (UTC)
@@ -228,6 +252,20 @@ void setup() {
   // Initialize Seesaw Rotary Encoder (Bus 1: GPIO8/9, Seesaw @ 0x36)
   if (!SeesawRotary::getInstance().begin()) {
     Serial.println("WARNING: Seesaw Rotary Encoder initialization failed - continuing anyway");
+  } else {
+    // Initialize NeoPixel immediately and set startup color
+    if (SeesawRotary::getInstance().neoPixelBegin()) {
+      neoPixelInitializedFlag = true;
+      currentNeopixelColor = 0xFFFF00;  // Yellow at power-on
+      SeesawRotary::getInstance().setNeoPixelColor(currentNeopixelColor);
+    } else {
+      Serial.println("[NeoPixel] WARNING: init failed in setup");
+    }
+  }
+
+  // Initialize AHT10 Temperature & Humidity Sensor (Bus 1: GPIO8/9, AHT10 @ 0x38)
+  if (!AHT10Manager::getInstance().begin()) {
+    Serial.println("WARNING: AHT10 sensor initialization failed - continuing anyway");
   }
   
   // Initialize Slave Controller (Bus 0: GPIO6/7)
@@ -294,10 +332,21 @@ void setup() {
   // Initialize WiFi manager
   wifiManager = new WiFiManager(preferences);
   bool isDHCP = (useDHCP == "true" || useDHCP == "on");
+
+  // Show blue while WiFi is initializing
+  if (neoPixelInitializedFlag) {
+    currentNeopixelColor = 0x0000FF;
+    SeesawRotary::getInstance().setNeoPixelColor(currentNeopixelColor);
+  }
   
   if(wifiManager->begin(ssid, pass, ip, gateway, netmask, isDHCP, WIFI_CONNECT_TIMEOUT)) {
     // WiFi connected successfully
     Serial.println("WiFi connected!");
+
+    if (neoPixelInitializedFlag) {
+      currentNeopixelColor = 0x00FF00;
+      SeesawRotary::getInstance().setNeoPixelColor(currentNeopixelColor);
+    }
     
     // Show WiFi logo on OLED
     Serial.println("Drawing WiFi logo...");
@@ -343,15 +392,6 @@ void setup() {
     // Sync time if enabled
     syncTimeIfEnabled(true);  // true = boot sync, saves boot time
     
-    // Initialize GPIO Viewer if enabled
-    if (gpioViewerEnabled == "true" || gpioViewerEnabled == "on") {
-      gpio_viewer = new GPIOViewer();
-      gpio_viewer->setSamplingInterval(500);  // 500ms to reduce CPU usage
-      gpio_viewer->setPort(5555);
-      gpio_viewer->begin();
-      Serial.println("GPIO Viewer started on port 5555");
-    }
-    
     // Route for root / web page
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
       request->send(LittleFS, "/index.html", "text/html");
@@ -359,8 +399,6 @@ void setup() {
     
     // Route for settings page with template processor
     server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String gpioViewerStatus = gpioViewerEnabled;
-      bool gpioEnabled = (gpioViewerStatus == "true" || gpioViewerStatus == "on");
       String updatesStatus = updatesEnabled;
       bool updatesEnabledBool = (updatesStatus == "true" || updatesStatus == "on");
       String otaStatus = otaEnabled;
@@ -412,7 +450,7 @@ void setup() {
         lastBootDisplay = String(lastBootStr);
       }
       
-      request->send(LittleFS, "/settings.html", "text/html", false, [gpioEnabled, updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool, ntpEnabledBool, currentDateTime, lastBootDisplay, serverTimeMs](const String& var) -> String {
+      request->send(LittleFS, "/settings.html", "text/html", false, [updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool, ntpEnabledBool, currentDateTime, lastBootDisplay, serverTimeMs](const String& var) -> String {
         if (var == "SSID") {
           return ssid;
         }
@@ -442,16 +480,6 @@ void setup() {
         }
         if (var == "FS_VERSION") {
           return currentFilesystemVersion;
-        }
-        if (var == "GPIOVIEWER_CHECKED") {
-          return gpioEnabled ? "checked" : "";
-        }
-        if (var == "GPIOVIEWER_BUTTON") {
-          if (gpioEnabled) {
-            String ipAddr = WiFi.localIP().toString();
-            return "<a href=\"http://" + ipAddr + ":5555\" target=\"_blank\" class=\"btn-small btn-open\">Open</a>";
-          }
-          return "";
         }
         if (var == "OTA_CHECKED") {
           return otaEnabledBool ? "checked" : "";
@@ -544,7 +572,6 @@ void setup() {
     // Handle settings POST
     server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
       bool shouldReboot = false;
-      bool gpioDisabled = false;
       bool configChanged = false;
       String message = "";
       
@@ -621,9 +648,6 @@ void setup() {
         }
       }
       
-      // Read current GPIO Viewer setting
-      String currentGpioViewerSetting = gpioViewerEnabled;
-      
       // Check debug checkbox
       if (request->hasParam("debug", true)) {
         // Checkbox is checked - enable debug
@@ -638,14 +662,6 @@ void setup() {
           debugEnabled = "off";
           configChanged = true;
           Serial.println("Debug options disabled");
-          
-          // Also disable GPIO Viewer when debug is disabled
-          if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
-            gpioViewerEnabled = "off";
-            Serial.println("GPIO Viewer also disabled - powercycle required");
-            message = "Powercycle device now!";
-            gpioDisabled = true;
-          }
           
           // Also disable OTA when debug is disabled
           if (otaEnabled == "on" || otaEnabled == "true") {
@@ -679,29 +695,8 @@ void setup() {
         }
       }
       
-      // Check gpioviewer checkbox (only if debug is enabled)
+      // Check OTA checkbox (only if debug is enabled)
       if (debugEnabled == "on" || debugEnabled == "true") {
-        if (request->hasParam("gpioviewer", true)) {
-          // Checkbox is checked - enable GPIO Viewer
-          if (currentGpioViewerSetting != "on" && currentGpioViewerSetting != "true") {
-            gpioViewerEnabled = "on";
-            configChanged = true;
-            Serial.println("GPIO Viewer enabled - rebooting...");
-            message = "GPIO Viewer enabled. Rebooting.";
-            shouldReboot = true;
-          }
-        } else {
-          // Checkbox is not checked - disable GPIO Viewer
-          if (currentGpioViewerSetting == "on" || currentGpioViewerSetting == "true") {
-            gpioViewerEnabled = "off";
-            configChanged = true;
-            Serial.println("GPIO Viewer disabled - powercycle required");
-            message = "GPIO Viewer disabled. Powercycle device.";
-            gpioDisabled = true;
-          }
-        }
-        
-        // Check OTA checkbox (only if debug is enabled)
         if (request->hasParam("ota", true)) {
           // Checkbox is checked - enable OTA
           if (otaEnabled != "on" && otaEnabled != "true") {
@@ -798,18 +793,16 @@ void setup() {
       }
       
       // Send confirmation page
-      if (shouldReboot || gpioDisabled) {
-        request->send(LittleFS, "/confirm.html", "text/html", false, [message, shouldReboot, gpioDisabled](const String& var) -> String {
+      if (shouldReboot) {
+        request->send(LittleFS, "/confirm.html", "text/html", false, [message, shouldReboot](const String& var) -> String {
           if (var == "MESSAGE") {
             return message;
           }
           if (var == "MESSAGE_CLASS") {
-            return (gpioDisabled || shouldReboot) ? "text-error" : "";
+            return shouldReboot ? "text-error" : "";
           }
           if (var == "RELOAD_BUTTON") {
             if (shouldReboot) {
-              return "<div class='form-actions-right'><input type='button' value='Done' onclick='window.location.href=\"/settings\";' class='btn-small btn-width-100'></div>";
-            } else if (gpioDisabled) {
               return "<div class='form-actions-right'><input type='button' value='Done' onclick='window.location.href=\"/settings\";' class='btn-small btn-width-100'></div>";
             }
             return "";
@@ -1053,6 +1046,7 @@ void setup() {
           if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED Display";
           else if (address == 0x27 || address == 0x3F) deviceName = "PCF8574 LCD 16x2";
           else if (address == 0x36) deviceName = "Seesaw Rotary Encoder";
+          else if (address == 0x38) deviceName = "AHT10 Temperature & Humidity Sensor";
           else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280 Sensor";
           else if (address == 0x68) deviceName = "MPU6050/DS3231 RTC";
           else if (address == 0x48) deviceName = "ADS1115 ADC";
@@ -1587,8 +1581,35 @@ void setup() {
 // Track if LCD has been updated with final status
 bool lcdStatusShown = false;
 
-// Handle display tasks (IP display timeout, etc.)
+// Handle display tasks (IP display timeout, sensor readings, etc.)
 void handleDisplayTasks() {
+  // Show temperature and humidity on OLED continuously (throttled)
+  static unsigned long lastDisplayUpdate = 0;
+  unsigned long now = millis();
+  
+  // Read AHT10 sensor periodically (every 30 seconds to save power)
+  static unsigned long lastSensorRead = 0;
+  if ((now - lastSensorRead >= 30000) && AHT10Manager::getInstance().isInitialized()) {
+    AHT10Manager::getInstance().readSensor();
+    lastSensorRead = now;
+  }
+
+  // Update display every 1 second with temperature and humidity
+  if ((now - lastDisplayUpdate >= 1000) && DisplayManager::getInstance().isInitialized()) {
+    lastDisplayUpdate = now;
+    
+    DisplayManager::getInstance().clear();
+    
+    // Show temperature and humidity in same font and position as IP address
+    DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+    float temp = AHT10Manager::getInstance().getTemperature();
+    float humidity = AHT10Manager::getInstance().getHumidity();
+    String sensorInfo = String(temp, 1) + "°C  " + String(humidity, 0) + "%";
+    DisplayManager::getInstance().drawString(0, 0, sensorInfo);
+    
+    DisplayManager::getInstance().updateDisplay();
+  }
+  
   // Non-blocking IP display clear after timeout
   if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > DISPLAY_IP_SHOW_DURATION)) {
     DisplayManager::getInstance().clear();
@@ -1614,6 +1635,39 @@ void handleDisplayTasks() {
     
     ipDisplayCleared = true;
   }
+  
+  // Update LCD time display every 500ms for blinking colon (2 Hz) - only after IP display cleared and if NTP enabled
+  if (ipDisplayCleared && LCDManager::getInstance().isInitialized() && Settings::stringToBool(ntpEnabled)) {
+    if ((now - lastLcdTimeUpdate >= 500)) {
+      lastLcdTimeUpdate = now;
+      
+      // Get current time with timezone offset
+      time_t rawTime = time(nullptr);
+      if (rawTime >= NTP_VALID_TIME) {  // Check if time is synchronized
+        // Parse timezone offset
+        int timezoneOffsetHours = 0;
+        if (timezone.startsWith("UTC+")) {
+          timezoneOffsetHours = timezone.substring(4).toInt();
+        } else if (timezone.startsWith("UTC-")) {
+          timezoneOffsetHours = -timezone.substring(4).toInt();
+        }
+        
+        time_t localTime = rawTime + (timezoneOffsetHours * 3600);
+        struct tm timeinfo;
+        gmtime_r(&localTime, &timeinfo);
+        
+        // Format: "DD-MM-YYYY HH:MM" with blinking colon (16 chars, fits 16x2 LCD)
+        // Use universal blink helper: 500ms interval = 2 Hz
+        bool colonVisible = getBlinkState(now, 500);
+        char timeStr[17];
+        snprintf(timeStr, sizeof(timeStr), "%02d-%02d-%04d %02d%c%02d",
+                 timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
+                 timeinfo.tm_hour, colonVisible ? ':' : ' ', timeinfo.tm_min);
+        
+        LCDManager::getInstance().printLine(1, String(timeStr));
+      }
+    }
+  }
 }
 
 // Handle network tasks (DNS, OTA, WiFi)
@@ -1637,9 +1691,111 @@ void handleSystemTasks() {
   }
 }
 
+// Handle NeoPixel status indicator and button feedback
+void handleNeopixelTasks() {
+  if (!SeesawRotary::getInstance().isInitialized()) {
+    return;  // Seesaw not ready
+  }
+
+  unsigned long now = millis();
+  static unsigned long lastInitAttempt = 0;
+
+  auto setColorIfChanged = [&](uint32_t color) {
+    if (color != currentNeopixelColor) {
+      currentNeopixelColor = color;
+      SeesawRotary::getInstance().setNeoPixelColor(color);
+    }
+  };
+
+  auto startBlink = [&](uint32_t color, uint32_t resumeColor, uint8_t phases, uint16_t phaseMs) {
+    blinkActive = true;
+    blinkColor = color;
+    blinkResumeColor = resumeColor;
+    blinkPhases = phases;
+    blinkPhaseDurationMs = phaseMs;
+    blinkStartTime = now;
+  };
+
+  // Try to initialize NeoPixel once after boot, then retry occasionally if needed
+  if (!neoPixelInitializedFlag) {
+    if (now < 2000) {
+      return;  // Let system settle before first init attempt
+    }
+
+    if (now - lastInitAttempt >= 3000) {
+      lastInitAttempt = now;
+      Serial.println("[NeoPixel] Attempting init...");
+      if (SeesawRotary::getInstance().neoPixelBegin()) {
+        neoPixelInitializedFlag = true;
+        currentNeopixelColor = 0xFFFF00;  // Yellow at startup
+        SeesawRotary::getInstance().setNeoPixelColor(currentNeopixelColor);
+        Serial.println("[NeoPixel] ✓ Init OK");
+      } else {
+        Serial.println("[NeoPixel] Init failed");
+      }
+    }
+    return;
+  }
+
+  // Determine base status color
+  uint32_t statusColor = 0xFFFF00;  // Yellow immediately at startup
+  wl_status_t wifiStatus = WiFi.status();
+  if (!isAPMode && wifiStatus == WL_CONNECTED) {
+    statusColor = 0x00FF00;  // Green: WiFi connected
+  } else if (isAPMode) {
+    statusColor = 0x0000FF;  // Blue: AP mode
+  } else if (wifiStatus == WL_CONNECT_FAILED || wifiStatus == WL_NO_SSID_AVAIL) {
+    statusColor = 0xFF0000;  // Red: WiFi error
+  } else {
+    statusColor = 0x0000FF;  // Blue: connecting
+  }
+
+  // Button press: 3x white blink, ignore early boot noise
+  if (!blinkActive && now > 5000 && SeesawRotary::getInstance().getButtonPress()) {
+    startBlink(0xFFFFFF, statusColor, 6, 100);
+  }
+
+  // Handle blink animation
+  if (blinkActive) {
+    unsigned long elapsed = now - blinkStartTime;
+    uint8_t phase = elapsed / blinkPhaseDurationMs;
+    if (phase < blinkPhases) {
+      if ((phase % 2) == 0) {
+        SeesawRotary::getInstance().setNeoPixelColor(blinkColor);
+      } else {
+        SeesawRotary::getInstance().neoPixelOff();
+      }
+      return;
+    }
+    blinkActive = false;
+    currentNeopixelColor = blinkResumeColor;
+    SeesawRotary::getInstance().setNeoPixelColor(blinkResumeColor);
+    lastNeopixelUpdate = now;  // Reset throttle to prevent immediate overwrite
+    return;  // Exit immediately after restoration
+  }
+
+  // AP mode: blue blink
+  if (isAPMode) {
+    bool apOn = ((now / 500) % 2) == 0;
+    if (apOn) {
+      setColorIfChanged(0x0000FF);
+    } else {
+      SeesawRotary::getInstance().neoPixelOff();
+    }
+    return;
+  }
+
+  // Solid status color
+  if (now - lastNeopixelUpdate >= 500) {
+    lastNeopixelUpdate = now;
+    setColorIfChanged(statusColor);
+  }
+}
+
 // ============================================================================
 // MAIN LOOP
 // ============================================================================
+
 
 void loop() {
   // Update GPIO states (buttons, switch, LED animations)
@@ -1648,6 +1804,7 @@ void loop() {
   handleDisplayTasks();
   handleSystemTasks();
   handleNetworkTasks();
+  handleNeopixelTasks();  // Update NeoPixel status indicator
   
   // Small delay to prevent excessive CPU usage
   delay(LOOP_DELAY);

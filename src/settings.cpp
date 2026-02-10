@@ -8,7 +8,6 @@ Settings::Settings() {
     netmask = DEFAULT_NETMASK;
     useDHCP = boolToString(DEFAULT_DHCP_ENABLED);
     debugEnabled = boolToString(DEFAULT_DEBUG_ENABLED);
-    gpioViewerEnabled = boolToString(DEFAULT_GPIO_VIEWER_ENABLED);
     otaEnabled = boolToString(DEFAULT_OTA_ENABLED);
     updatesEnabled = boolToString(DEFAULT_UPDATES_ENABLED);
     updateUrl = DEFAULT_UPDATE_URL;
@@ -32,7 +31,6 @@ void Settings::initialize() {
     
     // Feature defaults (security-conscious)
     preferences.putString("debug", boolToString(DEFAULT_DEBUG_ENABLED));
-    preferences.putString("gpioviewer", boolToString(DEFAULT_GPIO_VIEWER_ENABLED));
     preferences.putString("ota", boolToString(DEFAULT_OTA_ENABLED));
     preferences.putString("updates", boolToString(DEFAULT_UPDATES_ENABLED));
     preferences.putString("dhcp", boolToString(DEFAULT_DHCP_ENABLED));
@@ -75,7 +73,6 @@ void Settings::load() {
     
     // Feature flags
     debugEnabled = preferences.getString("debug", boolToString(DEFAULT_DEBUG_ENABLED));
-    gpioViewerEnabled = preferences.getString("gpioviewer", boolToString(DEFAULT_GPIO_VIEWER_ENABLED));
     otaEnabled = preferences.getString("ota", boolToString(DEFAULT_OTA_ENABLED));
     updatesEnabled = preferences.getString("updates", boolToString(DEFAULT_UPDATES_ENABLED));
     ntpEnabled = preferences.getString("ntp", boolToString(DEFAULT_NTP_ENABLED));
@@ -108,7 +105,6 @@ void Settings::save() {
     
     // Feature flags
     preferences.putString("debug", debugEnabled);
-    preferences.putString("gpioviewer", gpioViewerEnabled);
     preferences.putString("ota", otaEnabled);
     preferences.putString("updates", updatesEnabled);
     preferences.putString("ntp", ntpEnabled);
@@ -144,7 +140,6 @@ void Settings::saveNetwork() {
 void Settings::saveFeatures() {
     preferences.begin(NVS_NAMESPACE_CONFIG, false);
     preferences.putString("debug", debugEnabled);
-    preferences.putString("gpioviewer", gpioViewerEnabled);
     preferences.putString("ota", otaEnabled);
     preferences.putString("updates", updatesEnabled);
     preferences.putString("ntp", ntpEnabled);
@@ -291,7 +286,6 @@ void Settings::print() {
     Serial.println("    DHCP: " + useDHCP);
     Serial.println("  Features:");
     Serial.println("    Debug: " + debugEnabled);
-    Serial.println("    GPIO Viewer: " + gpioViewerEnabled);
     Serial.println("    OTA: " + otaEnabled);
     Serial.println("    Updates: " + updatesEnabled);
     Serial.println("  OTA:");

@@ -29,7 +29,6 @@ public:
     
     // Feature flags
     String debugEnabled;
-    String gpioViewerEnabled;
     String otaEnabled;
     String updatesEnabled;
     
