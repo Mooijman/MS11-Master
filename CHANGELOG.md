@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.11.02] - 2026-02-11
+
+### Changed
+- **Update UI**: Removed confirmation dialogs for streamlined OTA updates
+  - Eliminated confirm() prompts before firmware/filesystem updates
+  - Updates now start immediately when buttons clicked
+  - Console logging retained for debugging (F12 browser console)
+
 ## [2026.2.11.01] - 2026-02-11
 
 ### Fixed

@@ -343,9 +343,8 @@
     function installUpdate(type) {
       console.log('installUpdate called with type:', type);
       currentUpdateType = type;
-      if (!confirm('Device will restart after update. Continue?')) return;
       
-      console.log('User confirmed, starting update...');
+      console.log('Starting update...');
       forcedUpdateInProgress = true;
       deviceRebooting = false;
       rebootDetectionCount = 0;
@@ -392,12 +391,8 @@
     function reinstallVersion(type) {
       console.log('reinstallVersion called with type:', type);
       currentUpdateType = type;
-      if (!confirm('This will reinstall the current version. Device will restart. Continue?')) {
-        console.log('User cancelled reinstall');
-        return;
-      }
       
-      console.log('User confirmed, starting reinstall...');
+      console.log('Starting reinstall...');
       forcedUpdateInProgress = true;
       deviceRebooting = false;
       rebootDetectionCount = 0;
