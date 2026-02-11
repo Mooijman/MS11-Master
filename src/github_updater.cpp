@@ -8,6 +8,12 @@
 #include <esp_task_wdt.h>
 #include <ArduinoJson.h>
 
+// External flag to disable display updates during OTA
+extern bool otaUpdateInProgress;
+
+// External flag to disable display updates during OTA
+extern bool otaUpdateInProgress;
+
 GitHubUpdater::GitHubUpdater(Preferences& prefs) 
   : preferences(prefs) {
   updateInfo.state = UPDATE_IDLE;
@@ -196,6 +202,9 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     return false;
   }
   
+  // Set flag to stop temperature/humidity display during update
+  otaUpdateInProgress = true;
+  
   Serial.println(">>> DISPLAYING 'Updating FW' on OLED <<<");
   DisplayManager::getInstance().clear();
   DisplayManager::getInstance().setFont(ArialMT_Plain_16);
@@ -239,6 +248,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "Download failed HTTP " + String(httpCode);
     http.end();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -248,6 +258,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "Invalid content length";
     http.end();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -260,6 +271,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = Update.errorString();
     http.end();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -280,6 +292,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
           updateInfo.state = UPDATE_ERROR;
           updateInfo.lastError = "Write failed";
           http.end();
+          otaUpdateInProgress = false;
           return false;
         }
         written += c;
@@ -304,6 +317,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     Update.abort();
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "Size mismatch";
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -311,6 +325,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     Serial.println("Update.end failed: " + String(Update.errorString()));
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = Update.errorString();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -318,6 +333,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
     Serial.println("Update not finished");
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "Update incomplete";
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -342,6 +358,7 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   currentFwVersion = newVersion;
   settings.updateVersions();
   
+  // Note: Flag remains true until reboot - display will stay off
   return true;
 }
 
@@ -351,6 +368,9 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     Serial.println("No LittleFS URL available");
     return false;
   }
+  
+  // Set flag to stop temperature/humidity display during update
+  otaUpdateInProgress = true;
   
   DisplayManager::getInstance().clear();
   DisplayManager::getInstance().setFont(ArialMT_Plain_16);
@@ -397,6 +417,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "LFS download failed HTTP " + String(httpCode);
     http.end();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -406,6 +427,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "Invalid LFS content length";
     http.end();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -422,6 +444,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "LFS " + String(Update.errorString());
     http.end();
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -442,6 +465,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
           updateInfo.state = UPDATE_ERROR;
           updateInfo.lastError = "LFS write failed";
           http.end();
+          otaUpdateInProgress = false;
           return false;
         }
         written += c;
@@ -466,6 +490,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     Update.abort();
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "LFS size mismatch";
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -473,6 +498,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     Serial.println("LittleFS Update.end failed: " + String(Update.errorString()));
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "LFS " + String(Update.errorString());
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -480,6 +506,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
     Serial.println("LittleFS Update not finished");
     updateInfo.state = UPDATE_ERROR;
     updateInfo.lastError = "LFS update incomplete";
+    otaUpdateInProgress = false;
     return false;
   }
   
@@ -504,6 +531,7 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   currentFsVersion = newVersion;
   settings.updateVersions();
   
+  // Note: Flag remains true until reboot - display will stay off
   return true;
 }
 

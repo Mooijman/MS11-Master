@@ -111,6 +111,9 @@ int32_t lastEncoderPosition = 0;
 unsigned long lastCounterUpdate = 0;
 bool counterDisplayNeedsUpdate = true;
 
+// OTA update flag (set by GitHubUpdater during firmware/FS updates)
+bool otaUpdateInProgress = false;
+
 // LCD time display tracking
 unsigned long lastLcdTimeUpdate = 0;
 
@@ -1583,6 +1586,11 @@ bool lcdStatusShown = false;
 
 // Handle display tasks (IP display timeout, sensor readings, etc.)
 void handleDisplayTasks() {
+  // Skip display updates during OTA firmware/filesystem updates
+  if (otaUpdateInProgress) {
+    return;
+  }
+  
   // Show temperature and humidity on OLED continuously (throttled)
   static unsigned long lastDisplayUpdate = 0;
   unsigned long now = millis();

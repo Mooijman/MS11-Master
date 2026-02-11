@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.10.03] - 2026-02-11
+
+### Added
+- **AHT10 Temperature & Humidity Sensor**: Continuous environmental monitoring
+  - I2C address 0x38 on Display Bus (GPIO8/9)
+  - Real-time temperature (°C) and humidity (%) display on OLED
+  - Sensor reads every 30 seconds (power optimized)
+  - Device identification in I2C diagnostics scanner
+  - AHT10Manager singleton with health checks and error handling
+
+### Changed
+- **OLED Display**: Now shows temperature/humidity continuously at top-left
+  - Format: "22.5°C  45%" in small font (ArialMT_Plain_10)
+  - Display updates every 1 second
+  - Encoder counter temporarily disabled
+
+### Fixed
+- **OTA Display Blocking**: Temperature/humidity display now paused during firmware updates
+  - `otaUpdateInProgress` flag prevents display interference
+  - Clean "Updating FW/FS" messages without sensor data overlay
+  - Flag auto-resets on errors to restore normal operation
+
 ## [2026.2.10.02] - 2026-02-10
 
 ### Added
