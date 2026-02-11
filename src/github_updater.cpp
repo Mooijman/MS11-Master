@@ -207,18 +207,24 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   
   Serial.println(">>> DISPLAYING 'Updating FW' on OLED <<<");
   DisplayManager::getInstance().clear();
-  DisplayManager::getInstance().setFont(ArialMT_Plain_16);
-  DisplayManager::getInstance().drawString(0, 0, "Updating FW");
   DisplayManager::getInstance().setFont(ArialMT_Plain_10);
-  DisplayManager::getInstance().drawString(0, 30, "Please Wait...");
-  DisplayManager::getInstance().drawString(0, 45, "DO NOT POWER OFF");
+  DisplayManager::getInstance().drawString(0, 0, "Updating FW");
+  DisplayManager::getInstance().drawString(0, 15, "Please Wait...");
+  DisplayManager::getInstance().drawString(0, 30, "DO NOT POWER OFF");
   DisplayManager::getInstance().updateDisplay();
   Serial.println(">>> OLED display() called <<<");
   
   // Update LCD display
+  Serial.println(">>> Updating LCD display <<<");
   if (LCDManager::getInstance().isInitialized()) {
     LCDManager::getInstance().clear();
+    delay(50);
     LCDManager::getInstance().printLine(0, "Updating...");
+    delay(50);
+    LCDManager::getInstance().printLine(1, "Firmware");
+    Serial.println(">>> LCD updated with 'Updating...' <<<");
+  } else {
+    Serial.println(">>> LCD not initialized <<<");
   }
   
   updateInfo.state = UPDATE_DOWNLOADING;
@@ -343,11 +349,9 @@ bool GitHubUpdater::downloadAndInstallFirmware(String url, const String& githubT
   
   Serial.println(">>> DISPLAYING 'Update done / Rebooting...' on OLED <<<");
   DisplayManager::getInstance().clear();
-  // Keep normal display - no invertDisplay() for OTA updates
-  DisplayManager::getInstance().setFont(ArialMT_Plain_16);
-  DisplayManager::getInstance().drawString(0, 15, "Update done");
   DisplayManager::getInstance().setFont(ArialMT_Plain_10);
-  DisplayManager::getInstance().drawString(0, 40, "Rebooting...");
+  DisplayManager::getInstance().drawString(0, 10, "Update done");
+  DisplayManager::getInstance().drawString(0, 25, "Rebooting...");
   DisplayManager::getInstance().updateDisplay();
   Serial.println(">>> OLED display() called (normal white-on-black) <<<");
   
@@ -372,18 +376,26 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   // Set flag to stop temperature/humidity display during update
   otaUpdateInProgress = true;
   
+  Serial.println(">>> DISPLAYING 'Updating FS' on OLED <<<");
   DisplayManager::getInstance().clear();
-  DisplayManager::getInstance().setFont(ArialMT_Plain_16);
-  DisplayManager::getInstance().drawString(0, 0, "Updating FS");
   DisplayManager::getInstance().setFont(ArialMT_Plain_10);
-  DisplayManager::getInstance().drawString(0, 30, "Please Wait...");
-  DisplayManager::getInstance().drawString(0, 45, "DO NOT POWER OFF");
+  DisplayManager::getInstance().drawString(0, 0, "Updating FS");
+  DisplayManager::getInstance().drawString(0, 15, "Please Wait...");
+  DisplayManager::getInstance().drawString(0, 30, "DO NOT POWER OFF");
   DisplayManager::getInstance().updateDisplay();
+  Serial.println(">>> OLED display() called <<<");
   
   // Update LCD display
+  Serial.println(">>> Updating LCD display <<<");
   if (LCDManager::getInstance().isInitialized()) {
     LCDManager::getInstance().clear();
+    delay(50);
     LCDManager::getInstance().printLine(0, "Updating...");
+    delay(50);
+    LCDManager::getInstance().printLine(1, "Filesystem");
+    Serial.println(">>> LCD updated with 'Updating...' <<<");
+  } else {
+    Serial.println(">>> LCD not initialized <<<");
   }
   
   updateInfo.state = UPDATE_DOWNLOADING;
@@ -516,11 +528,9 @@ bool GitHubUpdater::downloadAndInstallLittleFS(String url, const String& githubT
   
   Serial.println(">>> DISPLAYING 'Update done / Rebooting...' on OLED (LittleFS) <<<");
   DisplayManager::getInstance().clear();
-  // Keep normal display - no invertDisplay() for OTA updates
-  DisplayManager::getInstance().setFont(ArialMT_Plain_16);
-  DisplayManager::getInstance().drawString(0, 15, "Update done");
   DisplayManager::getInstance().setFont(ArialMT_Plain_10);
-  DisplayManager::getInstance().drawString(0, 40, "Rebooting...");
+  DisplayManager::getInstance().drawString(0, 10, "Update done");
+  DisplayManager::getInstance().drawString(0, 25, "Rebooting...");
   DisplayManager::getInstance().updateDisplay();
   Serial.println(">>> OLED display() called (normal white-on-black) <<<");
   

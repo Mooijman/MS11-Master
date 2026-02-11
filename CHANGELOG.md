@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.11.01] - 2026-02-11
+
+### Fixed
+- **LCD Update Messages**: Restored "Updating..." display during OTA updates
+  - Line 0: "Updating...", Line 1: Update type ("Firmware"/"Filesystem")
+  - Added 50ms delays for LCD stability
+  - Debug logging for troubleshooting
+- **OLED Update Display**: Consistent small font (ArialMT_Plain_10) throughout updates
+  - Improved vertical spacing (y=0, 15, 30)
+  - Uniform layout for all update stages
+
 ## [2026.2.10.03] - 2026-02-11
 
 ### Added
