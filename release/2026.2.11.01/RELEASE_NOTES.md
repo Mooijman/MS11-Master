@@ -16,7 +16,13 @@
     - "DO NOT POWER OFF"
     - "Update done" / "Rebooting..."
 
+- **Browser Update UI**: Removed alert() pop-ups during updates
+  - All error messages now logged to browser console only
+  - No more disruptive popups during firmware/filesystem updates
+  - Cleaner user experience with console-based debugging
+
 ## Technical Details
 - LCD updates properly cleared before writing new text
 - OLED uses consistent 10pt font throughout update process
 - Added Serial debug output for LCD initialization status
+- Browser alert() calls replaced with console.log()/console.error()

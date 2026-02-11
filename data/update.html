@@ -375,7 +375,6 @@
           console.error('Update failed:', data.message);
           forcedUpdateInProgress = false;
           stopPolling();
-          alert('Update failed: ' + data.message);
           document.getElementById('update-warning').style.display = 'none';
         }
       })
@@ -385,7 +384,6 @@
         // Keep polling to detect when it comes back online
         if (!forcedUpdateInProgress) {
           stopPolling();
-          alert('Update error: ' + error.message);
           document.getElementById('update-warning').style.display = 'none';
         }
       });
@@ -429,7 +427,6 @@
           console.error('Reinstall failed:', data.message);
           forcedUpdateInProgress = false;
           stopPolling();
-          alert('Reinstall failed: ' + data.message);
           document.getElementById('update-warning').style.display = 'none';
         }
       })
@@ -439,7 +436,6 @@
         // Keep polling to detect when it comes back online
         if (!forcedUpdateInProgress) {
           stopPolling();
-          alert('Reinstall error: ' + error.message);
           document.getElementById('update-warning').style.display = 'none';
         }
       });
@@ -456,11 +452,10 @@
         })
         .then(data => {
           console.log('API Response:', data);
-          alert('API test successful! Check console for details.');
+          console.log('API test successful!');
         })
         .catch(error => {
           console.error('API test failed:', error);
-          alert('API test failed! Check console for error.');
         });
     }
     
