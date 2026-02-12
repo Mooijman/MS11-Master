@@ -27,7 +27,8 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
   Serial.println("[MD11SlaveUpdate] Bootloader command sent. Waiting for app to reboot...");
   
   // Wait for app to reboot and bootloader to start
-  delay(2000);
+  // ATmega328P bootloader has ~5s startup delay, so wait 6s to be safe
+  delay(6000);
   
   // Verify bootloader is active by querying version
   String version;
@@ -44,24 +45,38 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
 bool MD11SlaveUpdate::queryBootloaderVersion(String& version) {
   Serial.println("[MD11SlaveUpdate] Querying bootloader version...");
   
+  // Try multiple times in case bootloader is still initializing
+  const int MAX_ATTEMPTS = 5;
   uint8_t response[16];
-  uint16_t responseLen = sizeof(response);
   
-  if (!sendBootloaderCommand(TWIBOOT_READ_VERSION, nullptr, 0, response, &responseLen)) {
-    lastError = "Failed to query bootloader version";
-    return false;
+  for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    uint16_t responseLen = sizeof(response);
+    
+    if (sendBootloaderCommand(TWIBOOT_READ_VERSION, nullptr, 0, response, &responseLen)) {
+      if (responseLen < 4) {
+        lastError = "Invalid version response length";
+        if (attempt < MAX_ATTEMPTS) {
+          delay(500);
+          continue;
+        }
+        return false;
+      }
+      
+      // Response format: major, minor, features_low, features_high
+      version = String(response[0]) + "." + String(response[1]);
+      Serial.println("[MD11SlaveUpdate] Bootloader version: " + version);
+      
+      return true;
+    }
+    
+    if (attempt < MAX_ATTEMPTS) {
+      Serial.printf("[MD11SlaveUpdate] Version query attempt %d failed, retrying in 500ms...\n", attempt);
+      delay(500);
+    }
   }
   
-  if (responseLen < 4) {
-    lastError = "Invalid version response length";
-    return false;
-  }
-  
-  // Response format: major, minor, features_low, features_high
-  version = String(response[0]) + "." + String(response[1]);
-  Serial.println("[MD11SlaveUpdate] Bootloader version: " + version);
-  
-  return true;
+  lastError = "Failed to query bootloader version after " + String(MAX_ATTEMPTS) + " attempts";
+  return false;
 }
 
 bool MD11SlaveUpdate::queryChipSignature(uint8_t& sig0, uint8_t& sig1, uint8_t& sig2) {
