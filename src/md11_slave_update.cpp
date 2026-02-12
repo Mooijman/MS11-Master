@@ -43,11 +43,33 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
     }
   }
   
-  Serial.println("[MD11SlaveUpdate] Waiting for app to reboot (6 seconds + buffer)...");
+  Serial.println("[MD11SlaveUpdate] Waiting for app to reboot...");
   
-  // Wait for app to reboot and bootloader to start
-  // ATmega328P bootloader has ~5s startup delay, so wait longer to be safe
-  delay(7000);
+  // Short delay, then check if 0x30 stopped responding (= reboot happened)
+  delay(1000);
+  bool appStillAlive = manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE);
+  Serial.printf("[MD11SlaveUpdate] After 1s: app at 0x30 %s\n", 
+                appStillAlive ? "STILL RESPONDING (reboot may not have happened!)" : "GONE (reboot happened ✓)");
+  
+  if (appStillAlive) {
+    Serial.println("[MD11SlaveUpdate] WARNING: App at 0x30 still responding. Bootloader entry may have been ignored.");
+    Serial.println("[MD11SlaveUpdate] Trying writeRegister method instead...");
+    
+    // Try using writeRegister() directly - with built-in retries
+    if (!manager.writeRegister(APP_I2C_ADDR, APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC)) {
+      Serial.println("[MD11SlaveUpdate] writeRegister also failed");
+    } else {
+      Serial.println("[MD11SlaveUpdate] writeRegister sent, waiting...");
+    }
+    delay(1000);
+    appStillAlive = manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE);
+    Serial.printf("[MD11SlaveUpdate] After retry: app at 0x30 %s\n",
+                  appStillAlive ? "STILL RESPONDING" : "GONE ✓");
+  }
+  
+  // Wait for bootloader to fully start (~5s startup delay for Twiboot)
+  Serial.println("[MD11SlaveUpdate] Waiting for bootloader to initialize (5 seconds)...");
+  delay(5000);
   
   // Try to ping bootloader first
   Serial.println("[MD11SlaveUpdate] Checking if bootloader at 0x14 is responding...");
@@ -72,37 +94,50 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
 bool MD11SlaveUpdate::queryBootloaderVersion(String& version) {
   Serial.println("[MD11SlaveUpdate] Querying bootloader version...");
   
-  // Try multiple times in case bootloader is still initializing
+  // IMPORTANT: In Twiboot, the version is read by simply doing a requestFrom()
+  // WITHOUT sending any command byte first. The bootloader has version info
+  // ready in its buffer by default.
+  // DO NOT send command 0x01 - that is CMD_SWITCH_APPLICATION which exits the bootloader!
+  
   const int MAX_ATTEMPTS = 5;
-  uint8_t response[16];
+  TwoWire* wire = &Wire1;  // Slave bus (GPIO5/6)
   
   for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    uint16_t responseLen = sizeof(response);
+    Serial.printf("[MD11SlaveUpdate] Version read attempt %d/%d...\n", attempt, MAX_ATTEMPTS);
     
-    if (sendBootloaderCommand(TWIBOOT_READ_VERSION, nullptr, 0, response, &responseLen)) {
-      if (responseLen < 4) {
-        lastError = "Invalid version response length";
-        if (attempt < MAX_ATTEMPTS) {
-          delay(500);
-          continue;
-        }
-        return false;
+    // Just request bytes - no write command needed for Twiboot version read
+    size_t available = wire->requestFrom((uint8_t)TWIBOOT_I2C_ADDR, (uint8_t)16);
+    Serial.printf("[MD11SlaveUpdate] requestFrom(0x14, 16) returned %d bytes available\n", available);
+    
+    if (available >= 4) {
+      uint8_t response[16];
+      uint16_t bytesRead = 0;
+      while (wire->available() && bytesRead < 16) {
+        response[bytesRead++] = wire->read();
       }
       
-      // Response format: major, minor, features_low, features_high
+      Serial.printf("[MD11SlaveUpdate] Read %d bytes: ", bytesRead);
+      for (int i = 0; i < bytesRead; i++) {
+        Serial.printf("0x%02X ", response[i]);
+      }
+      Serial.println();
+      
+      // Twiboot response: [module_id, version, page_size_words_low, page_size_words_high]
       version = String(response[0]) + "." + String(response[1]);
       Serial.println("[MD11SlaveUpdate] Bootloader version: " + version);
-      
       return true;
     }
     
+    // Flush any partial data
+    while (wire->available()) wire->read();
+    
     if (attempt < MAX_ATTEMPTS) {
-      Serial.printf("[MD11SlaveUpdate] Version query attempt %d failed, retrying in 500ms...\n", attempt);
+      Serial.printf("[MD11SlaveUpdate] Too few bytes, retrying in 500ms...\n");
       delay(500);
     }
   }
   
-  lastError = "Failed to query bootloader version after " + String(MAX_ATTEMPTS) + " attempts";
+  lastError = "Failed to read bootloader version after " + String(MAX_ATTEMPTS) + " attempts";
   return false;
 }
 

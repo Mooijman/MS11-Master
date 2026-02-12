@@ -16,8 +16,11 @@
 #define APP_BOOTLOADER_MAGIC 0xB0     // Safety magic byte
 
 // Twiboot commands (from bootloader protocol)
+// WARNING: 0x01 = CMD_SWITCH_APPLICATION (exits bootloader!) - DO NOT use for reads!
+// In Twiboot, version is read via requestFrom() without any command byte.
 enum TwiBootCommand {
-  TWIBOOT_READ_VERSION = 0x01,
+  TWIBOOT_CMD_SWITCH_APP = 0x01,  // Exit bootloader (needs 0x80 data byte)
+  TWIBOOT_CMD_ACCESS_MEMORY = 0x02,  // Read/write flash/eeprom
   TWIBOOT_READ_MEMORY = 0x02,
   TWIBOOT_WRITE_MEMORY = 0x03,
   TWIBOOT_READ_FLASH = 0x04,
