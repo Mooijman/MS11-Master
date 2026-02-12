@@ -13,22 +13,49 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
   
   I2CManager& manager = I2CManager::getInstance();
   
-  // Use raw write (same as LED control path) - sends {register, magic} as two bytes
-  Serial.printf("[MD11SlaveUpdate] Sending bootloader command: REG=0x%02X, MAGIC=0x%02X\n", 
-                APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC);
-  
-  uint8_t bootCmd[2] = {APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC};
-  if (!manager.write(APP_I2C_ADDR, bootCmd, 2)) {
-    lastError = "Failed to send bootloader command to app (0x" + String(APP_I2C_ADDR, HEX) + ")";
+  // First, verify app is responding
+  if (!manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE)) {
+    lastError = "Target app at 0x30 not responding before bootloader command";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
     return false;
   }
+  Serial.println("[MD11SlaveUpdate] ✓ Target app at 0x30 is responding");
   
-  Serial.println("[MD11SlaveUpdate] Bootloader command sent. Waiting for app to reboot...");
+  // Send bootloader activation command multiple times for reliability
+  uint8_t bootCmd[2] = {APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC};
+  
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    Serial.printf("[MD11SlaveUpdate] Sending bootloader command (attempt %d/3): REG=0x%02X, MAGIC=0x%02X\n",
+                  attempt, APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC);
+    
+    if (manager.write(APP_I2C_ADDR, bootCmd, 2)) {
+      Serial.println("[MD11SlaveUpdate] ✓ Bootloader command sent successfully");
+      break;
+    }
+    
+    if (attempt < 3) {
+      Serial.println("[MD11SlaveUpdate] Retrying...");
+      delay(100);
+    } else {
+      lastError = "Failed to send bootloader command to app (0x" + String(APP_I2C_ADDR, HEX) + ") after 3 attempts";
+      Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
+      return false;
+    }
+  }
+  
+  Serial.println("[MD11SlaveUpdate] Waiting for app to reboot (6 seconds + buffer)...");
   
   // Wait for app to reboot and bootloader to start
-  // ATmega328P bootloader has ~5s startup delay, so wait 6s to be safe
-  delay(6000);
+  // ATmega328P bootloader has ~5s startup delay, so wait longer to be safe
+  delay(7000);
+  
+  // Try to ping bootloader first
+  Serial.println("[MD11SlaveUpdate] Checking if bootloader at 0x14 is responding...");
+  if (manager.ping(TWIBOOT_I2C_ADDR, I2C_BUS_SLAVE)) {
+    Serial.println("[MD11SlaveUpdate] ✓ Bootloader detected at 0x14!");
+  } else {
+    Serial.println("[MD11SlaveUpdate] WARNING: Bootloader not responding at 0x14, will attempt version query anyway...");
+  }
   
   // Verify bootloader is active by querying version
   String version;
