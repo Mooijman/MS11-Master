@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.12.01] - 2026-02-12
+
+### Added
+- **LCD Display States**: Comprehensive startup and operational display sequences
+  - Startup: "MagicSmoker 11" → "Starting up..." (blinking 600ms/400ms)
+  - WiFi Enabled: Shows IP address for 3 seconds
+  - WiFi Manager: Shows "ESP-WIFI-MANAGER" SSID
+  - MS11-control Detection: "Detected" or "Absent" status (2 seconds)
+  - Ready State: "Ready." with NTP time display (DD-MM-YYYY HH:MM)
+  - Time Display: Blinking colon synchronized to system clock (600ms/400ms)
+- **LED Pulse Communication**: Enhanced MS11-control slave signaling
+  - Detection Pulse: 500ms LED pulse when MS11-control found at startup
+  - Heartbeat Pulse: 2ms LED pulse every 4 seconds during operation
+  - Non-blocking pulse state machine for smooth multitasking
+
+### Changed
+- **Non-blocking Architecture**: Removed all delay() calls from display updates
+  - Universal blinkState() function for asymmetric blink patterns
+  - LCD updates now tracked with state variables and timestamps
+  - OLED sensor display delayed until startup sequence complete
+- **LED Control**: Switched to proper I2C register protocol (0x10/0x11)
+  - Uses SLAVE_REG_LED_ONOFF for direct LED control
+  - State machine handles pulse timing in main loop
+  - Debug serial output for all LED operations
+
+### Fixed
+- **Time Display Colon Blink**: Now properly synchronized using modulo arithmetic
+- **MS11 Detection Display**: Correctly shows detection status with state tracking
+- **WiFi Manager Display**: Shows correct AP SSID instead of configured SSID
+- **Startup Blink**: Properly stopped when entering WiFi manager mode
+
 ## [2026.2.11.02] - 2026-02-11
 
 ### Changed
