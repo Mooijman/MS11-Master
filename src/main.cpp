@@ -162,7 +162,7 @@ void delayWithBlink(unsigned long ms) {
 // ============================================================================
 // SLAVE FIRMWARE AUTO-UPDATE FROM FILESYSTEM
 // ============================================================================
-// On startup, checks if a hex file in /fw/ is newer than the current
+// On startup, checks if a hex file in the filesystem root is newer than the current
 // MS11-control firmware. If so, flashes the slave automatically.
 // This runs during setup(), before the web server starts.
 
@@ -179,32 +179,27 @@ void checkAndUpdateSlaveFromFilesystem() {
     return;
   }
   
-  // Step 1: Find hex file in /fw/ directory on LittleFS
-  File fwDir = LittleFS.open("/fw");
-  if (!fwDir || !fwDir.isDirectory()) {
-    Serial.println("[SlaveUpdate] No /fw directory found on filesystem");
-    return;
-  }
-  
+  // Step 1: Find hex file in filesystem root
   String hexFilename = "";
   String hexVersion = "";
-  File entry = fwDir.openNextFile();
+  File root = LittleFS.open("/");
+  File entry = root.openNextFile();
   while (entry) {
     String name = String(entry.name());
     // Match sl-YYYY.M.m.pp.hex pattern
     if (name.startsWith("sl-") && name.endsWith(".hex")) {
-      hexFilename = "/fw/" + name;
+      hexFilename = "/" + name;
       // Extract version: "sl-2026.2.12.01.hex" -> "2026.2.12.01"
       hexVersion = name.substring(3, name.length() - 4);
       Serial.println("[SlaveUpdate] Found hex file: " + hexFilename + " (version " + hexVersion + ")");
       break;  // Use first matching file
     }
-    entry = fwDir.openNextFile();
+    entry = root.openNextFile();
   }
-  fwDir.close();
+  root.close();
   
   if (hexFilename.isEmpty()) {
-    Serial.println("[SlaveUpdate] No sl-*.hex file found in /fw/");
+    Serial.println("[SlaveUpdate] No sl-*.hex file found in filesystem root");
     return;
   }
   
