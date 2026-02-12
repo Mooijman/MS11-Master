@@ -1,4 +1,5 @@
 #include "md11_slave_update.h"
+#include "i2c_manager.h"
 
 MD11SlaveUpdate::MD11SlaveUpdate() {
   lastError = "";
@@ -8,13 +9,13 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
   // Send bootloader activation command to app at 0x30
   // This tells app to set EEPROM flag and reboot
   
-  Serial.println("[MD11SlaveUpdate] Requesting bootloader mode...");
+  Serial.println("[MD11SlaveUpdate] Requesting bootloader mode via I2C Bus 1 (Slave Bus)...");
   
-  Wire.beginTransmission(APP_I2C_ADDR);
-  Wire.write(APP_BOOTLOADER_COMMAND);  // Send 0x42 ('B')
-  uint8_t error = Wire.endTransmission();
+  I2CManager& manager = I2CManager::getInstance();
   
-  if (error != 0) {
+  // Use slave bus (Wire1, GPIO5/6) for the slave controller
+  uint8_t cmd = APP_BOOTLOADER_COMMAND;  // 0x42 ('B')
+  if (!manager.write(APP_I2C_ADDR, &cmd, 1)) {
     lastError = "Failed to send bootloader command to app (0x" + String(APP_I2C_ADDR, HEX) + ")";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
     return false;
@@ -206,12 +207,16 @@ bool MD11SlaveUpdate::uploadHexFile(const String& hexContent, void (*progressCal
 bool MD11SlaveUpdate::writeFlashPage(uint16_t pageAddress, const uint8_t* pageData, uint16_t pageSize) {
   Serial.printf("[MD11SlaveUpdate] Writing page at 0x%04X (%d bytes)\n", pageAddress, pageSize);
   
-  const int CHUNK_SIZE = 16;  // 16 bytes per I2C transaction (safe for Arduino Wire library)
+  const int CHUNK_SIZE = 16;  // 16 bytes per I2C transaction (safe for Wire library 32-byte buffer)
   const int MAX_RETRIES = 3;
   
+  // CRITICAL: Use Wire1 (slave bus, GPIO5/6) - NOT Wire (display bus, GPIO8/9)!
+  // The bootloader at 0x14 is on the slave bus.
+  TwoWire* wire = &Wire1;
+  
   // Write page in 16-byte chunks
-  // CRITICAL: Each chunk MUST be a separate I2C transaction with STOP condition!
-  // The bootloader accumulates data from multiple STOP-terminated transactions.
+  // Each chunk is a separate I2C transaction with STOP condition.
+  // Twiboot protocol: [CMD_ACCESS_MEMORY(0x02)] [MEMTYPE_FLASH(0x01)] [addrH] [addrL] [data...]
   // Page write is triggered internally when page boundary is reached.
   for (int offset = 0; offset < pageSize; offset += CHUNK_SIZE) {
     int bytesThisChunk = min(CHUNK_SIZE, pageSize - offset);
@@ -219,40 +224,41 @@ bool MD11SlaveUpdate::writeFlashPage(uint16_t pageAddress, const uint8_t* pageDa
     
     bool chunkSent = false;
     for (int attempt = 1; attempt <= MAX_RETRIES && !chunkSent; attempt++) {
-      Wire.beginTransmission(TWIBOOT_I2C_ADDR);
-      // CRITICAL: Use 4-byte header protocol from original Gus Mueller code!
-      // Reference: https://github.com/judasgutenberg/twiboot_for_arduino/blob/main/slaveupdate.cpp
-      Wire.write(0x02);  // CMD_ACCESS_MEMORY
-      Wire.write(0x01);  // MEMTYPE_FLASH
-      Wire.write((chunkAddr >> 8) & 0xFF);  // Address high byte
-      Wire.write(chunkAddr & 0xFF);         // Address low byte
+      wire->beginTransmission(TWIBOOT_I2C_ADDR);
+      wire->write(0x02);  // CMD_ACCESS_MEMORY
+      wire->write(0x01);  // MEMTYPE_FLASH
+      wire->write((chunkAddr >> 8) & 0xFF);  // Address high byte
+      wire->write(chunkAddr & 0xFF);         // Address low byte
       
       // Write chunk data
       for (int i = 0; i < bytesThisChunk; i++) {
-        Wire.write(pageData[offset + i]);
+        wire->write(pageData[offset + i]);
       }
       
-      delay(2);  // Small delay before transmission
-      // CRITICAL: Send STOP after every chunk (bootloader expects this!)
-      uint8_t err = Wire.endTransmission();  // Default = true, sends STOP
-      delay(2);
+      // Send STOP after every chunk (bootloader expects this)
+      uint8_t err = wire->endTransmission(true);
       
       if (err == 0) {
         chunkSent = true;
       } else {
-        Serial.printf("[MD11SlaveUpdate] ERROR: Chunk send failed at offset %d (attempt %d, error %d)\n", 
-                     offset, attempt, err);
+        Serial.printf("[MD11SlaveUpdate] ERROR: Chunk at 0x%04X+%d failed (attempt %d, error %d)\n", 
+                     pageAddress, offset, attempt, err);
         delay(5 * attempt);  // Increasing delay on retries
       }
     }
     
     if (!chunkSent) {
-      lastError = "Failed to send chunk at offset " + String(offset);
+      lastError = "Failed to send chunk at address 0x" + String(pageAddress + offset, HEX);
       return false;
     }
     
-    delay(10);  // POST_CHUNK_DELAY - let bootloader process chunk
+    // Wait for bootloader to process chunk
+    // On page boundary crossings, bootloader does erase+write (~4.5ms for ATmega328P)
+    delay(5);
   }
+  
+  // Extra delay after full page for potential page flush
+  delay(10);
   
   Serial.println("[MD11SlaveUpdate] Page written successfully");
   return true;
@@ -337,36 +343,55 @@ bool MD11SlaveUpdate::readMemory(uint16_t address, uint8_t* buffer, uint16_t len
 bool MD11SlaveUpdate::sendBootloaderCommand(TwiBootCommand cmd, const uint8_t* data,
                                           uint16_t dataLen, uint8_t* response,
                                           uint16_t* responseLen) {
-  // Send command to bootloader via I2C
-  Wire.beginTransmission(TWIBOOT_I2C_ADDR);
-  Wire.write((uint8_t)cmd);
+  // Send command to bootloader via I2C slave bus (Wire1, GPIO5/6)
+  I2CManager& manager = I2CManager::getInstance();
+  
+  // Build command buffer
+  uint8_t cmdBuffer[256];
+  cmdBuffer[0] = (uint8_t)cmd;
   
   if (data && dataLen > 0) {
-    Wire.write(data, dataLen);
+    memcpy(cmdBuffer + 1, data, dataLen);
   }
   
-  uint8_t error = Wire.endTransmission(true);  // Complete transmission
-  if (error != 0) {
-    lastError = "I2C transmission failed";
+  // Send via slave bus (Wire1)
+  if (!manager.write(TWIBOOT_I2C_ADDR, cmdBuffer, 1 + dataLen)) {
+    lastError = "I2C transmission failed on slave bus";
+    Serial.println("[MD11SlaveUpdate] ERROR: Write failed - " + lastError);
     return false;
   }
   
-  // Small delay for bootloader to process command
-  delay(5);
+  Serial.printf("[MD11SlaveUpdate] Sent command 0x%02X to bootloader, waiting for response...\n", cmd);
   
-  // Request response from bootloader
+  // Small delay for bootloader to process command
+  delay(10);
+  
+  // Request response from bootloader (flexible length)
   if (response && responseLen && *responseLen > 0) {
-    Wire.requestFrom(TWIBOOT_I2C_ADDR, *responseLen);
+    uint16_t maxLen = *responseLen;
+    uint16_t bytesRead = 0;
+    unsigned long startTime = millis();
+    unsigned long timeout = 100;  // 100ms timeout
     
-    // Wait for data with timeout
-    unsigned long start = millis();
-    while (Wire.available() < *responseLen && (millis() - start) < 100) {
-      delay(1);
+    // Use Wire1 directly (slave bus, GPIO5/6)
+    TwoWire* wire1 = &Wire1;
+    
+    // Simple requestFrom - no extra beginTransmission needed
+    // The previous write already completed with STOP
+    size_t available = wire1->requestFrom(TWIBOOT_I2C_ADDR, maxLen);
+    Serial.printf("[MD11SlaveUpdate] Requested %d bytes, got %d available\n", maxLen, available);
+    
+    while (wire1->available() && bytesRead < maxLen && (millis() - startTime) < timeout) {
+      response[bytesRead++] = wire1->read();
     }
     
-    int bytesRead = 0;
-    while (Wire.available() && bytesRead < *responseLen) {
-      response[bytesRead++] = Wire.read();
+    Serial.printf("[MD11SlaveUpdate] Read %d bytes from bootloader\n", bytesRead);
+    
+    if (bytesRead == 0) {
+      lastError = "No response from bootloader";
+      Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
+      *responseLen = 0;
+      return false;
     }
     
     *responseLen = bytesRead;

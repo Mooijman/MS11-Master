@@ -47,6 +47,10 @@
 #define REG_IGNITER_CMD_L    0x28
 #define REG_SYS_TEMP_ALARM_CMD 0x29
 
+// LED control registers (I2C test mode)
+#define SLAVE_REG_LED_ONOFF  0x10  // 0=off, 1=on
+#define SLAVE_REG_LED_BLINK  0x11  // 0=off, 1=1Hz, 2=4Hz
+
 // Status byte bits
 #define STATUS_IGNITER_BIT   0x01
 #define STATUS_AUGER_BIT     0x02
@@ -131,6 +135,10 @@ public:
   
   // Run slave self-test
   bool runSelfTest();
+  
+  // Direct LED control via I2C
+  bool setLed(bool on);  // Turn LED on/off
+  bool pulseLed(uint16_t durationMs);  // Start a non-blocking pulse
   
   // Get last error message
   String getLastError() { return lastError; }

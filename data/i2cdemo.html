@@ -179,12 +179,19 @@
     // ===========================
     // Bootloader Control Functions
     // ===========================
+    let bootloaderPollInterval = null;
+    let bootloaderPollAttempts = 0;
+    // Bootloader has 5s startup delay + boot_timeout=0xFFFF (~minutes),
+    // so we poll for up to 15 seconds to detect it
+    const MAX_POLL_ATTEMPTS = 30;  // 30 * 500ms = 15 seconds
+
     function enterBootloaderMode() {
       const statusDiv = document.getElementById('bootloader-status');
       const messageEl = document.getElementById('bootloader-message');
       
-      // Reset bootloader connection state
       bootloaderConnected = false;
+      bootloaderPollAttempts = 0;
+      stopPolling();
       
       statusDiv.classList.remove('hidden');
       messageEl.innerHTML = '<span style="color: #999;">Bootloader commando wordt verzonden...</span>';
@@ -196,28 +203,21 @@
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          let message = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>';
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
+            '<span style="color: #856404; font-size: 12px; font-style: italic;">Bootloader start duurt ~5 seconden. Polling...</span>';
           
-          // Check if bootloader is still activating
-          if (data.bootloaderVersion === 'activating...') {
-            message += '<span style="color: #856404; font-size: 12px; font-style: italic;">Arduino is aan het rebooten. ' +
-                      'Bootloader wordt actief op I2C adres 0x14 binnen enkele seconden.</span>';
-          } else {
-            message += '<span style="color: #999; font-size: 12px;">Arduino is nu in bootloader mode (I2C adres 0x14). ' +
-                      'Gebruik firmware update sectie hieronder om firmware te uploaden.</span>';
-            if (data.bootloaderVersion) {
-              message += '<br><span style="color: #666; font-size: 11px;">Bootloader versie: ' + data.bootloaderVersion + '</span>';
+          // Start polling to detect bootloader (it takes ~5s to become ready)
+          bootloaderPollInterval = setInterval(() => {
+            bootloaderPollAttempts++;
+            if (bootloaderPollAttempts > MAX_POLL_ATTEMPTS) {
+              stopPolling();
+              messageEl.innerHTML += '<br><span style="color: #856404; font-size: 11px;">Timeout: Bootloader niet gevonden na 15 seconden.</span>';
+              return;
             }
-          }
-          messageEl.innerHTML = message;
-          // Check firmware update status after entering bootloader (only once)
-          setTimeout(checkFirmwareStatus, 1000);
+            checkFirmwareStatus();
+          }, 500);
         } else {
-          let errorMsg = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
-          if (data.hint) {
-            errorMsg += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
-          }
-          messageEl.innerHTML = errorMsg;
+          messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
         }
       })
       .catch(error => {
@@ -240,25 +240,17 @@
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          let message = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
-                       '<span style="color: #999; font-size: 12px;">Arduino is terug in normale mode (I2C adres 0x30).</span>';
-          if (data.hint) {
-            message += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
-          }
-          messageEl.innerHTML = message;
-          // Check firmware update status after exiting bootloader
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
+            '<span style="color: #999; font-size: 12px;">Arduino is terug in normale mode (I2C adres 0x30).</span>';
+          bootloaderConnected = false;
+          stopPolling();
           setTimeout(checkFirmwareStatus, 1000);
         } else {
-          let errorMsg = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
-          if (data.hint) {
-            errorMsg += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
-          }
-          messageEl.innerHTML = errorMsg;
+          messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
         }
       })
       .catch(error => {
         messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
-        console.error('Error:', error);
       });
     }
 
@@ -276,21 +268,48 @@
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
-                               '<span style="color: #999; font-size: 12px;">Arduino gereset. Controleer I2C verbinding op adres 0x30.</span>';
-          // Check firmware update status after reset
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span>';
+          bootloaderConnected = false;
+          stopPolling();
           setTimeout(checkFirmwareStatus, 1000);
         } else {
-          let errorMsg = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
-          if (data.hint) {
-            errorMsg += '<br><span style="color: #856404; font-size: 12px; font-style: italic;">' + data.hint + '</span>';
-          }
-          messageEl.innerHTML = errorMsg;
+          messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
         }
       })
       .catch(error => {
         messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
-        console.error('Error:', error);
+      });
+    }
+
+    function stopPolling() {
+      if (bootloaderPollInterval) {
+        clearInterval(bootloaderPollInterval);
+        bootloaderPollInterval = null;
+      }
+    }
+
+    function sendResetCommand() {
+      console.log('Sending reset command to exit bootloader...');
+      
+      fetch('/api/i2c/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Reset response:', data);
+        if (data.success) {
+          // Give Arduino time to restart
+          setTimeout(() => {
+            showSuccess();
+          }, 1000);
+        } else {
+          showError('Reset failed: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(error => {
+        console.error('Reset error:', error);
+        showError('Reset command failed: ' + error);
       });
     }
 
@@ -298,19 +317,12 @@
     // Firmware Update Functions
     // ===========================
     let selectedFile = null;
-    let bootloaderConnected = false;  // Track bootloader state
+    let bootloaderConnected = false;
     
     function checkFirmwareStatus() {
-      console.log('Checking bootloader status...');
-      // Reset sections
-      document.getElementById('upload-section').classList.add('hidden');
-      document.getElementById('error-section').classList.add('hidden');
-      document.getElementById('success-section').classList.add('hidden');
-      document.getElementById('progress-section').classList.add('hidden');
-      
-      // If already connected, don't poll again to avoid kicking out of bootloader
+      // Don't reset UI if already connected - bootloader stays active on its own
+      // (boot_timeout = 0xFFFF in Twiboot = minutes of idle time)
       if (bootloaderConnected) {
-        console.log('Already connected, skipping status check');
         return;
       }
       
@@ -318,21 +330,31 @@
         .then(response => response.json())
         .then(data => {
           if (data.connected) {
-            bootloaderConnected = true;  // Mark as connected
+            bootloaderConnected = true;
+            stopPolling();  // Stop detection polling
+            
             document.getElementById('fw-bootloader-status').textContent = 'Connected ✓';
-            document.getElementById('chip-info').textContent = 'Signature: ' + data.signature;
-            document.getElementById('connection-status').textContent = 'Bootloader version: ' + data.version;
+            document.getElementById('chip-info').textContent = 'Signature: ' + (data.signature || '-');
+            document.getElementById('connection-status').textContent = 'Bootloader version: ' + (data.version || '-');
             document.getElementById('upload-section').classList.remove('hidden');
-            console.log('Bootloader connected - stopping status polling');
+            document.getElementById('error-section').classList.add('hidden');
+            
+            // Update bootloader status message
+            const messageEl = document.getElementById('bootloader-message');
+            if (messageEl) {
+              messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ Bootloader verbonden</span><br>' +
+                '<span style="color: #999; font-size: 12px;">Arduino is in bootloader mode. U kunt nu firmware uploaden.</span>';
+              document.getElementById('bootloader-status').classList.remove('hidden');
+            }
           } else {
             document.getElementById('fw-bootloader-status').textContent = 'Ready';
-            document.getElementById('connection-status').innerHTML = '<span style="color: #666;">Arduino in normal mode. Click "Enter Bootloader" above to activate firmware update.</span>';
-            document.getElementById('chip-info').textContent = 'Click Enter Bootloader first';
+            document.getElementById('connection-status').innerHTML = '<span style="color: #666;">Arduino in normal mode. Click "Enter Bootloader" above.</span>';
+            document.getElementById('chip-info').textContent = '-';
+            document.getElementById('upload-section').classList.add('hidden');
           }
         })
         .catch(error => {
           console.error('Status check failed:', error);
-          document.getElementById('connection-status').innerHTML = '<span style="color: #d9534f;">Connection error</span>';
         });
     }
     
@@ -357,37 +379,29 @@
       document.getElementById('upload-section').classList.add('hidden');
       document.getElementById('progress-section').classList.remove('hidden');
       
-      // Read file content
       const reader = new FileReader();
       reader.onload = function(e) {
         const hexContent = e.target.result;
-        console.log('File loaded, ' + hexContent.length + ' bytes');
         
-        // Send to server
         fetch('/api/twi/upload', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            hexContent: hexContent
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hexContent: hexContent })
         })
         .then(response => response.json())
         .then(data => {
-          console.log('Upload response:', data);
           if (data.success) {
-            showSuccess();
+            // Upload successful - now send reset command to exit bootloader
+            console.log('Upload successful, sending reset command...');
+            sendResetCommand();
           } else {
             showError(data.error || 'Upload failed');
           }
         })
         .catch(error => {
-          console.error('Upload error:', error);
           showError('Upload failed: ' + error);
         });
         
-        // Update progress
         updateProgressWithInterval(hexContent.length);
       };
       reader.readAsText(selectedFile);
@@ -397,13 +411,9 @@
       let progress = 0;
       const interval = setInterval(() => {
         progress += Math.random() * 30;
-        if (progress > 90) progress = 90;  // Don't reach 100% until complete
-        
+        if (progress > 90) progress = 90;
         updateProgress(Math.floor(progress), totalSize);
-        
-        if (progress >= 90) {
-          clearInterval(interval);
-        }
+        if (progress >= 90) clearInterval(interval);
       }, 500);
     }
     
@@ -423,19 +433,37 @@
     }
     
     function showError(message) {
+      bootloaderConnected = false;
       document.getElementById('progress-section').classList.add('hidden');
       document.getElementById('error-section').classList.remove('hidden');
       document.getElementById('error-message').textContent = message;
     }
     
     function showSuccess() {
+      bootloaderConnected = false;
+      
       document.getElementById('progress-section').classList.add('hidden');
       document.getElementById('progress-fill').style.width = '100%';
       document.getElementById('progress-text').textContent = '100%';
       document.getElementById('success-section').classList.remove('hidden');
+      document.getElementById('upload-section').classList.add('hidden');
+      
+      // Update status to show bootloader exited
+      document.getElementById('fw-bootloader-status').textContent = 'Ready';
+      document.getElementById('connection-status').innerHTML = '<span style="color: #27ae60;">✓ Firmware updated successfully</span><br>' +
+        '<span style="color: #999; font-size: 12px;">Arduino is back in normal mode.</span>';
+      document.getElementById('chip-info').textContent = '-';
+      
+      // Hide bootloader status message
+      const messageEl = document.getElementById('bootloader-message');
+      if (messageEl) {
+        messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ Firmware update complete</span><br>' +
+          '<span style="color: #999; font-size: 12px;">Arduino is back in normal mode (0x30).</span>';
+        document.getElementById('bootloader-status').classList.remove('hidden');
+      }
     }
     
-    // Check firmware status on page load
+    // Check status on page load
     checkFirmwareStatus();
   </script>
 </body>

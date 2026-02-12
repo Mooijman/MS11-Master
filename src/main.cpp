@@ -5,17 +5,10 @@
 #include "LittleFS.h"
 #include <DNSServer.h>
 #include <ArduinoOTA.h>
-#include <SSD1306.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
-#include <Update.h>
-#include <esp_ota_ops.h>
-#include <esp_task_wdt.h>
 #include <Preferences.h>
-#include <ArduinoJson.h>
 #include <time.h>
-#include <sys/time.h>
-#include "images.h"
+
+// Project modules
 #include "config.h"
 #include "settings.h"
 #include "i2c_manager.h"
@@ -28,16 +21,18 @@
 #include "github_updater.h"
 #include "wifi_manager.h"
 #include "md11_slave_update.h"
+#include "images.h"
 
-// Global instances
+// Extracted modules
+#include "utils.h"
+#include "ntp_manager.h"
+#include "web_server_routes.h"
+
+// ============================================================================
+// GLOBAL INSTANCES
+// ============================================================================
+
 Preferences preferences;
-
-
-// I2C Managers (use singleton pattern)
-// - I2CManager: Dual-bus I2C controller (Slave @ 100kHz, Display @ 100kHz)
-// - DisplayManager: OLED driver (Bus 1: GPIO8/9)
-// - SlaveController: ATmega328P interface (Bus 0: GPIO6/7)
-// Note: Never instantiate SSD1306 directly - use DisplayManager
 
 // GitHub updater instance
 GitHubUpdater* githubUpdater = nullptr;
@@ -54,13 +49,14 @@ AsyncWebServer server(WEB_SERVER_PORT);
 // DNS server for captive portal
 DNSServer dnsServer;
 
+// ============================================================================
+// APPLICATION STATE
+// ============================================================================
+
 // WiFi scan cache
 String cachedScanResults = "";
 unsigned long lastScanTime = 0;
 bool scanInProgress = false;
-
-// NOP: I2C LED demo constants moved to slave_controller.h
-// Use SlaveController singleton for all slave communication
 
 // Compatibility layer - reference settings module variables
 // These allow existing code to work without changes
@@ -117,104 +113,51 @@ bool otaUpdateInProgress = false;
 // LCD time display tracking
 unsigned long lastLcdTimeUpdate = 0;
 
+// MS11 detection tracking
+unsigned long ms11DetectionTime = 0;
+bool ms11DetectionShown = false;
+bool ms11Present = false;
+
+// MS11 connection lost blink + restored tracking
+bool ms11ConnectionLost = false;
+bool lastConnectionLostBlink = true;
+bool ms11Restored = false;
+unsigned long ms11RestoredTime = 0;
+
+// Heartbeat / reconnect pulse tracking (2-second interval)
+unsigned long lastHeartbeatTime = 0;
+
+// LED pulse tracking (non-blocking)
+unsigned long ledPulseStartTime = 0;
+uint16_t ledPulseDurationMs = 0;
+bool ledPulseActive = false;
+
+// Startup blink tracking
+bool startupBlinkDone = false;
+unsigned long startupBlinkStart = 0;
+
 // Forward declaration
 void performReboot();
 
-// Initialize LittleFS
-void initLittleFS() {
-  if (!LittleFS.begin(true, LITTLEFS_BASE_PATH, LITTLEFS_MAX_FILES, LITTLEFS_PARTITION_LABEL)) {
-    Serial.println("An error has occurred while mounting LittleFS");
-  }
-  Serial.println("LittleFS mounted successfully");
-}
-
-// Escape string for JSON
-String jsonEscape(String str) {
-  String result = "";
-  for (int i = 0; i < str.length(); i++) {
-    char c = str.charAt(i);
-    if (c == '"') {
-      result += "\\\"";
-    } else if (c == '\\') {
-      result += "\\\\";
-    } else if (c == '\n') {
-      result += "\\n";
-    } else if (c == '\r') {
-      result += "\\r";
-    } else if (c == '\t') {
-      result += "\\t";
-    } else {
-      result += c;
-    }
-  }
-  return result;
-}
-
-// Universal blink state helper
-// Returns true/false based on current time and blink interval
-// Example: getBlinkState(millis(), 500) = 2 Hz blink (toggles every 500ms)
-bool getBlinkState(unsigned long currentMillis, unsigned long intervalMs) {
-  return ((currentMillis / intervalMs) % 2) == 0;
-}
-
-// NTP time sync (UTC)
-void syncTimeIfEnabled(bool isBootSync = false) {
-  if (!Settings::stringToBool(ntpEnabled)) {
-    Serial.println("NTP sync disabled");
-    return;
-  }
-
-  Serial.println("Starting NTP sync...");
-  configTime(NTP_GMT_OFFSET_SEC, NTP_DAYLIGHT_OFFSET_SEC, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
-
-  const unsigned long start = millis();
-  time_t now = 0;
-  while (now < NTP_VALID_TIME && (millis() - start) < NTP_SYNC_TIMEOUT) {
-    time(&now);
-    delay(100);
-  }
-
-  if (now >= NTP_VALID_TIME) {
-    Serial.println(String("NTP time synced: ") + ctime(&now));
-    struct tm timeinfo;
-    gmtime_r(&now, &timeinfo);
-    settings.saveStoredDateIfNeeded(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
-    
-    // Only save boot time on the first sync after boot (not on later settings updates)
-    if (isBootSync) {
-      // Parse timezone offset for boot time storage
-      int timezoneOffsetHours = 0;
-      if (timezone.startsWith("UTC+")) {
-        timezoneOffsetHours = timezone.substring(4).toInt();
-      } else if (timezone.startsWith("UTC-")) {
-        timezoneOffsetHours = -timezone.substring(4).toInt();
-      }
-      
-      // Save boot time if debug enabled (with timezone offset at time of sync)
-      settings.saveBootTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, timezoneOffsetHours);
-    }
-  } else {
-    Serial.println("NTP sync timeout");
-    Settings::StoredDate stored = settings.getStoredDate();
-    if (stored.valid) {
-      struct tm fallbackTime = {};
-      fallbackTime.tm_year = stored.year - 1900;
-      fallbackTime.tm_mon = stored.month - 1;
-      fallbackTime.tm_mday = stored.day;
-      fallbackTime.tm_hour = 0;
-      fallbackTime.tm_min = 0;
-      fallbackTime.tm_sec = 0;
-      time_t fallback = mktime(&fallbackTime);
-      if (fallback > 0) {
-        struct timeval tv = { .tv_sec = fallback, .tv_usec = 0 };
-        settimeofday(&tv, nullptr);
-        Serial.println(String("NTP failed; using stored date: ") + stored.year + "-" + stored.month + "-" + stored.day);
+// Helper: delay with LCD startup blink (replaces blocking delay() during setup)
+void delayWithBlink(unsigned long ms) {
+  unsigned long start = millis();
+  bool lastVisible = true;
+  while (millis() - start < ms) {
+    if (!startupBlinkDone && LCDManager::getInstance().isInitialized()) {
+      bool visible = blinkState(millis(), 600, 400);
+      if (visible != lastVisible) {
+        lastVisible = visible;
+        LCDManager::getInstance().printLine(1, visible ? "Starting up..." : "");
       }
     }
+    delay(10);  // Small yield to avoid WDT
   }
 }
 
+// ============================================================================
+// SETUP
+// ============================================================================
 
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
@@ -236,21 +179,16 @@ void setup() {
   }
   
   // Initialize LCD Manager (Bus 1: GPIO8/9, LCD @ 0x27)
-  Serial.println("\n=== Initializing LCD Manager ===");
-  Serial.println("Calling LCDManager::getInstance().begin()...");
   if (!LCDManager::getInstance().begin()) {
     Serial.println("WARNING: LCD 16x2 initialization failed - continuing anyway");
   } else {
-    // Show startup message on LCD
-    Serial.println("LCD initialized successfully, showing startup message...");
+    // Show startup message on LCD (line 1 will blink in loop)
     LCDManager::getInstance().clear();
-    delay(100);
     LCDManager::getInstance().printLine(0, "*MagicSmoker 11*");
-    delay(100);
-    LCDManager::getInstance().printLine(1, "**Starting... **");
-    Serial.println("Startup message sent to LCD");
+    LCDManager::getInstance().printLine(1, "Starting up...");
+    startupBlinkStart = millis();
+    startupBlinkDone = false;
   }
-  Serial.println("=== LCD Manager initialization complete ===\n");
   
   // Initialize Seesaw Rotary Encoder (Bus 1: GPIO8/9, Seesaw @ 0x36)
   if (!SeesawRotary::getInstance().begin()) {
@@ -277,28 +215,28 @@ void setup() {
   }
   
   // Update display managers with version info after delays
-  delay(2000);
+  delayWithBlink(2000);
 
   // Show Waacs logo on display
   Serial.println("Displaying Waacs logo...");
   DisplayManager::getInstance().clear();
-  delay(100);
+  delayWithBlink(100);
   // Waacs logo: 105 pixels wide, 21 pixels high (centered on 128x64 display)
   // x=11 centers the logo: (128-105)/2 = 11.5 ≈ 11
   DisplayManager::getInstance().drawXbm(11, 16, 105, 21, Waacs_Logo_bits);
   Serial.println("drawXbm called for Waacs logo (105x21 @ 11,16)");
   DisplayManager::getInstance().updateDisplay();
   Serial.println("Waacs logo displayed");
-  delay(3000);
+  delayWithBlink(3000);
   
   // Clear and show MS11 Master text
   DisplayManager::getInstance().clear();
-  delay(100);
+  delayWithBlink(100);
   Serial.println("Displaying MS11 Master text...");
   DisplayManager::getInstance().setFont(ArialMT_Plain_10);
   DisplayManager::getInstance().drawStringCenter(28, "MS11 Master");
   DisplayManager::getInstance().updateDisplay();
-  delay(2000);
+  delayWithBlink(2000);
   DisplayManager::getInstance().clear();
   DisplayManager::getInstance().updateDisplay();
 
@@ -352,11 +290,9 @@ void setup() {
     }
     
     // Show WiFi logo on OLED
-    Serial.println("Drawing WiFi logo...");
     DisplayManager::getInstance().clear();
     delay(100);  // Ensure clear is complete
     DisplayManager::getInstance().drawXbm(34, 14, 60, 36, WiFi_Logo_bits);
-    Serial.println("WiFi logo drawn, updating display...");
     DisplayManager::getInstance().updateDisplay();
     delay(100);  // Let render complete
     delay(1000);
@@ -370,1023 +306,30 @@ void setup() {
     DisplayManager::getInstance().drawString(0, 42, "fs-" + currentFilesystemVersion);
     DisplayManager::getInstance().updateDisplay();
     
-    // Show SSID and IP address on LCD (16x2 display)
-    Serial.println("Updating LCD with WiFi info...");
+    // Show WiFi enabled and IP address on LCD (16x2 display)
     LCDManager::getInstance().clear();
-    delay(150);
-    // Show SSID on line 0
-    String currentSsid = WiFi.SSID();
-    String ssidDisplay = currentSsid.length() > 16 ? currentSsid.substring(0, 16) : currentSsid;
-    LCDManager::getInstance().printLine(0, ssidDisplay);
-    delay(100);
-    // Show IP on line 1
+    LCDManager::getInstance().printLine(0, "WiFi Enabled");
     String ipStr = WiFi.localIP().toString();
     String ipDisplay = ipStr.length() > 16 ? ipStr.substring(0, 16) : ipStr;
     LCDManager::getInstance().printLine(1, ipDisplay);
-    Serial.println("WiFi info sent to LCD");
-    Serial.println("LCD updated with WiFi info");
-    delay(200);
+    startupBlinkDone = true;  // Stop startup blink
     
     // Start timer to clear display after 3 seconds
     ipDisplayTime = millis();
     ipDisplayShown = true;
     ipDisplayCleared = false;
+    
+    // Check for MS11-control on I2C bus (detection LED pulse will be triggered in loop)
+    ms11DetectionTime = millis();
+    ms11DetectionShown = false;
+    ms11Present = SlaveController::getInstance().ping();
+    Serial.printf("[Main] MS11-control detection: %s\n", ms11Present ? "PRESENT" : "ABSENT");
 
     // Sync time if enabled
     syncTimeIfEnabled(true);  // true = boot sync, saves boot time
     
-    // Route for root / web page
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/index.html", "text/html");
-    });
-    
-    // Route for settings page with template processor
-    server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String updatesStatus = updatesEnabled;
-      bool updatesEnabledBool = (updatesStatus == "true" || updatesStatus == "on");
-      String otaStatus = otaEnabled;
-      bool otaEnabledBool = (otaStatus == "true" || otaStatus == "on");
-      bool dhcpEnabledBool = (useDHCP == "true" || useDHCP == "on");
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-      bool ntpEnabledBool = (ntpEnabled == "true" || ntpEnabled == "on");
-      
-      // Parse timezone offset from string (e.g., "UTC+2" -> +2 hours)
-      int timezoneOffsetHours = 0;
-      if (timezone.startsWith("UTC+")) {
-        timezoneOffsetHours = timezone.substring(4).toInt();
-      } else if (timezone.startsWith("UTC-")) {
-        timezoneOffsetHours = -timezone.substring(4).toInt();
-      }
-      
-      // Get current time and apply timezone offset
-      time_t now = time(nullptr);
-      time_t serverTimeWithOffset = now + (timezoneOffsetHours * 3600);  // For display
-      struct tm timeinfo;
-      gmtime_r(&serverTimeWithOffset, &timeinfo);
-      char currentDateTime[30];
-      snprintf(currentDateTime, sizeof(currentDateTime), "%04d-%02d-%02d %02d:%02d:%02d",
-               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      
-      // Convert to milliseconds for JavaScript (live clock on client side)
-      String serverTimeMs = String((long long)serverTimeWithOffset * 1000);
-      
-      String lastBootDisplay = "-";
-      Settings::BootTime lastBoot = settings.getLastBootTime();
-      if (lastBoot.valid) {
-        // Use the timezone offset that was stored at boot time, not current setting
-        struct tm bootTm = {};
-        bootTm.tm_year = lastBoot.year - 1900;
-        bootTm.tm_mon = lastBoot.month - 1;
-        bootTm.tm_mday = lastBoot.day;
-        bootTm.tm_hour = lastBoot.hour;
-        bootTm.tm_min = lastBoot.minute;
-        bootTm.tm_sec = lastBoot.second;
-        bootTm.tm_isdst = -1;
-        time_t bootTime = mktime(&bootTm);
-        bootTime += (lastBoot.timezoneOffsetHours * 3600);  // Use stored timezone offset
-        struct tm* bootInfo = gmtime(&bootTime);
-        char lastBootStr[30];
-        snprintf(lastBootStr, sizeof(lastBootStr), "%04d-%02d-%02d %02d:%02d:%02d",
-                 bootInfo->tm_year + 1900, bootInfo->tm_mon + 1, bootInfo->tm_mday,
-                 bootInfo->tm_hour, bootInfo->tm_min, bootInfo->tm_sec);
-        lastBootDisplay = String(lastBootStr);
-      }
-      
-      request->send(LittleFS, "/settings.html", "text/html", false, [updatesEnabledBool, otaEnabledBool, dhcpEnabledBool, debugEnabledBool, ntpEnabledBool, currentDateTime, lastBootDisplay, serverTimeMs](const String& var) -> String {
-        if (var == "SSID") {
-          return ssid;
-        }
-        if (var == "PASSWORD") {
-          return "";  // Don't return actual password, use placeholder instead
-        }
-        if (var == "IP_ADDRESS") {
-          return ip;
-        }
-        if (var == "GATEWAY") {
-          return gateway;
-        }
-        if (var == "NETMASK") {
-          return netmask;
-        }
-        if (var == "DHCP_CHECKED") {
-          return dhcpEnabledBool ? "checked" : "";
-        }
-        if (var == "DEBUG_CHECKED") {
-          return debugEnabledBool ? "checked" : "";
-        }
-        if (var == "DEBUG_DISPLAY") {
-          return debugEnabledBool ? "style=\"display: block;\"" : "style=\"display: none;\"";
-        }
-        if (var == "FW_VERSION") {
-          return currentFirmwareVersion;
-        }
-        if (var == "FS_VERSION") {
-          return currentFilesystemVersion;
-        }
-        if (var == "OTA_CHECKED") {
-          return otaEnabledBool ? "checked" : "";
-        }
-        if (var == "UPDATES_CHECKED") {
-          return updatesEnabledBool ? "checked" : "";
-        }
-        if (var == "NTP_CHECKED") {
-          return ntpEnabledBool ? "checked" : "";
-        }
-        if (var == "TIMEZONE_GROUP_DISPLAY") {
-          return ntpEnabledBool ? "" : "style=\"display: none;\"";
-        }
-        if (var == "NTP_TIMES_DISPLAY") {
-          return ntpEnabledBool ? "style=\"margin-top: 10px;\"" : "style=\"margin-top: 10px; display: none;\"";
-        }
-        if (var == "TIMEZONE") {
-          return timezone;
-        }
-        if (var == "TIMEZONE_UTC0") {
-          return (timezone == "UTC+0") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC1") {
-          return (timezone == "UTC+1") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC2") {
-          return (timezone == "UTC+2") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC3") {
-          return (timezone == "UTC+3") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC4") {
-          return (timezone == "UTC+4") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC5") {
-          return (timezone == "UTC+5") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC6") {
-          return (timezone == "UTC+6") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC7") {
-          return (timezone == "UTC+7") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC8") {
-          return (timezone == "UTC+8") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC9") {
-          return (timezone == "UTC+9") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC10") {
-          return (timezone == "UTC+10") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC11") {
-          return (timezone == "UTC+11") ? "selected" : "";
-        }
-        if (var == "TIMEZONE_UTC12") {
-          return (timezone == "UTC+12") ? "selected" : "";
-        }
-        if (var == "UPDATES_DISPLAY") {
-          return updatesEnabledBool ? "style=\"display: flex;\"" : "style=\"display: none;\"";
-        }
-        if (var == "UPDATES_BUTTON") {
-          if (updatesEnabledBool) {
-            return "<a href=\"/update\" class=\"btn-small btn-update-link\">Update</a>";
-          }
-          return "";
-        }
-        if (var == "UPDATE_URL") {
-          return updateUrl;
-        }
-        if (var == "GITHUB_TOKEN") {
-          return githubToken;
-        }
-        if (var == "FILE_MANAGER_VISIBILITY") {
-          return debugEnabledBool ? "style=\"visibility: visible;\"" : "style=\"visibility: hidden;\"";
-        }
-        if (var == "CURRENT_DATETIME") {
-          return String(currentDateTime);
-        }
-        if (var == "SERVER_TIME_MS") {
-          return serverTimeMs;
-        }
-        if (var == "LAST_BOOT_TIME") {
-          return lastBootDisplay;
-        }
-        return String();
-      });
-    });
-    
-    // Handle settings POST
-    server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
-      bool shouldReboot = false;
-      bool configChanged = false;
-      String message = "";
-      
-      Serial.println("Settings POST received");
-      
-      // SSID
-      if (request->hasParam("ssid", true)) {
-        String newSsid = request->getParam("ssid", true)->value();
-        newSsid.trim();
-        if (newSsid.length() > 0 && newSsid != ssid) {
-          ssid = newSsid;
-          configChanged = true;
-          shouldReboot = true;
-          Serial.println("SSID changed to: " + ssid);
-        }
-      }
-      
-      // Password
-      if (request->hasParam("password", true)) {
-        String newPass = request->getParam("password", true)->value();
-        if (newPass.length() > 0 && newPass != pass) {
-          pass = newPass;
-          configChanged = true;
-          shouldReboot = true;
-          // Save password to NVS
-          preferences.begin("config", false);
-          preferences.putString("pass", pass);
-          preferences.end();
-          Serial.println("Password changed");
-        }
-      }
-      
-      // DHCP checkbox
-      String newDhcp = request->hasParam("dhcp", true) ? "on" : "off";
-      String currentDhcp = (useDHCP == "true" || useDHCP == "on") ? "on" : "off";
-      if (newDhcp != currentDhcp) {
-        useDHCP = newDhcp;
-        configChanged = true;
-        shouldReboot = true;
-        Serial.println("DHCP changed to: " + useDHCP);
-      }
-      
-      // Network settings
-      if (request->hasParam("ip", true)) {
-        String newIp = request->getParam("ip", true)->value();
-        newIp.trim();
-        if (newIp != ip) {
-          ip = newIp;
-          configChanged = true;
-          shouldReboot = true;
-          Serial.println("IP changed to: " + ip);
-        }
-      }
-      
-      if (request->hasParam("gateway", true)) {
-        String newGateway = request->getParam("gateway", true)->value();
-        newGateway.trim();
-        if (newGateway != gateway) {
-          gateway = newGateway;
-          configChanged = true;
-          shouldReboot = true;
-          Serial.println("Gateway changed to: " + gateway);
-        }
-      }
-      
-      if (request->hasParam("netmask", true)) {
-        String newNetmask = request->getParam("netmask", true)->value();
-        newNetmask.trim();
-        if (newNetmask != netmask) {
-          netmask = newNetmask;
-          configChanged = true;
-          shouldReboot = true;
-          Serial.println("Netmask changed to: " + netmask);
-        }
-      }
-      
-      // Check debug checkbox
-      if (request->hasParam("debug", true)) {
-        // Checkbox is checked - enable debug
-        if (debugEnabled != "on" && debugEnabled != "true") {
-          debugEnabled = "on";
-          configChanged = true;
-          Serial.println("Debug options enabled");
-        }
-      } else {
-        // Checkbox is not checked - disable debug
-        if (debugEnabled == "on" || debugEnabled == "true") {
-          debugEnabled = "off";
-          configChanged = true;
-          Serial.println("Debug options disabled");
-          
-          // Also disable OTA when debug is disabled
-          if (otaEnabled == "on" || otaEnabled == "true") {
-            otaEnabled = "off";
-            Serial.println("OTA also disabled");
-          }
-        }
-      }
-      
-      // FW Version (debug only)
-      if (debugEnabled == "on" || debugEnabled == "true") {
-        if (request->hasParam("fw_version", true)) {
-          String newFwVersion = request->getParam("fw_version", true)->value();
-          newFwVersion.trim();
-          if (newFwVersion != currentFirmwareVersion) {
-            currentFirmwareVersion = newFwVersion;
-            configChanged = true;
-            Serial.println("FW version changed to: " + currentFirmwareVersion);
-          }
-        }
-        
-        // FS Version (debug only)
-        if (request->hasParam("fs_version", true)) {
-          String newFsVersion = request->getParam("fs_version", true)->value();
-          newFsVersion.trim();
-          if (newFsVersion != currentFilesystemVersion) {
-            currentFilesystemVersion = newFsVersion;
-            configChanged = true;
-            Serial.println("FS version changed to: " + currentFilesystemVersion);
-          }
-        }
-      }
-      
-      // Check OTA checkbox (only if debug is enabled)
-      if (debugEnabled == "on" || debugEnabled == "true") {
-        if (request->hasParam("ota", true)) {
-          // Checkbox is checked - enable OTA
-          if (otaEnabled != "on" && otaEnabled != "true") {
-            otaEnabled = "on";
-            configChanged = true;
-            Serial.println("OTA enabled");
-          }
-        } else {
-          // Checkbox is not checked - disable OTA
-          if (otaEnabled == "on" || otaEnabled == "true") {
-            otaEnabled = "off";
-            configChanged = true;
-            Serial.println("OTA disabled");
-          }
-        }
-      }
-      
-      // Check updates checkbox
-      if (request->hasParam("updates", true)) {
-        // Checkbox is checked - enable updates
-        if (updatesEnabled != "on" && updatesEnabled != "true") {
-          updatesEnabled = "on";
-          configChanged = true;
-          Serial.println("Software updates enabled");
-        }
-      } else {
-        // Checkbox is not checked - disable updates
-        if (updatesEnabled == "on" || updatesEnabled == "true") {
-          updatesEnabled = "off";
-          configChanged = true;
-          Serial.println("Software updates disabled");
-        }
-      }
-
-      // Check NTP checkbox
-      if (request->hasParam("ntp", true)) {
-        if (ntpEnabled != "on" && ntpEnabled != "true") {
-          ntpEnabled = "on";
-          configChanged = true;
-          Serial.println("NTP sync enabled");
-        }
-      } else {
-        if (ntpEnabled == "on" || ntpEnabled == "true") {
-          ntpEnabled = "off";
-          configChanged = true;
-          Serial.println("NTP sync disabled");
-        }
-      }
-      
-      // Timezone
-      if (request->hasParam("timezone", true)) {
-        String newTz = request->getParam("timezone", true)->value();
-        newTz.trim();
-        if (newTz != timezone) {
-          timezone = newTz;
-          configChanged = true;
-          Serial.println("Timezone changed to: " + timezone);
-        }
-      }
-      
-      // Update URL
-      if (request->hasParam("updateurl", true)) {
-        String newUpdateUrl = request->getParam("updateurl", true)->value();
-        newUpdateUrl.trim();
-        if (newUpdateUrl != updateUrl) {
-          updateUrl = newUpdateUrl;
-          configChanged = true;
-          Serial.println("Update URL changed to: " + updateUrl);
-        }
-      }
-      
-      // GitHub Token
-      if (request->hasParam("githubtoken", true)) {
-        String newToken = request->getParam("githubtoken", true)->value();
-        newToken.trim();
-        if (newToken != githubToken) {
-          githubToken = newToken;
-          configChanged = true;
-          Serial.println("GitHub token updated");
-        }
-      }
-      
-      // Save config changes if needed
-      if (configChanged) {
-        settings.save();
-        if (!shouldReboot) {
-          syncTimeIfEnabled(false);  // false = not boot sync, don't save boot time
-        }
-      }
-      
-      // Set default message if reboot needed but no message set
-      if (shouldReboot && message.isEmpty()) {
-        message = "Settings saved";
-      }
-      
-      // Send confirmation page
-      if (shouldReboot) {
-        request->send(LittleFS, "/confirm.html", "text/html", false, [message, shouldReboot](const String& var) -> String {
-          if (var == "MESSAGE") {
-            return message;
-          }
-          if (var == "MESSAGE_CLASS") {
-            return shouldReboot ? "text-error" : "";
-          }
-          if (var == "RELOAD_BUTTON") {
-            if (shouldReboot) {
-              return "<div class='form-actions-right'><input type='button' value='Done' onclick='window.location.href=\"/settings\";' class='btn-small btn-width-100'></div>";
-            }
-            return "";
-          }
-          return String();
-        });
-        
-        if (shouldReboot) {
-          // Schedule reboot after 2 seconds to allow browser to receive response
-          rebootScheduled = true;
-          rebootTime = millis();
-        }
-      } else {
-        // No changes - just redirect back
-        request->redirect("/settings");
-      }
-    });
-    
-    // Reboot endpoint
-    server.on("/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
-      Serial.println("Manual reboot requested");
-      request->send(200, "text/plain", "Rebooting...");
-      rebootScheduled = true;
-      rebootTime = millis();
-    });
-    
-    // Reset WiFi settings
-    server.on("/reset-wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-      Serial.println("WiFi reset requested");
-      
-      // Clear WiFi credentials from NVS
-      preferences.begin("config", false);
-      preferences.remove("ssid");
-      preferences.remove("pass");
-      preferences.remove("ip");
-      preferences.remove("gateway");
-      preferences.remove("netmask");
-      preferences.remove("dhcp");
-      preferences.end();
-      
-      request->send(200, "text/plain", "WiFi settings reset");
-      
-      // Schedule reboot
-      rebootScheduled = true;
-      rebootTime = millis();
-    });
-    
-    // File manager page
-    server.on("/files", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/files.html", "text/html");
-    });
-    
-    // Firmware update page
-    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/update.html", "text/html");
-    });
-    
-    // I2C diagnostics page
-    server.on("/i2c", HTTP_GET, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-      
-      request->send(LittleFS, "/i2c.html", "text/html", false, [debugEnabledBool](const String& var) -> String {
-        if (var == "DEBUG_ENABLED") {
-          return debugEnabledBool ? "true" : "false";
-        }
-        return String();
-      });
-    });
-
-    // I2C demo page
-    server.on("/i2cdemo", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/i2cdemo.html", "text/html");
-    });
-    
-    // API: Get Twiboot bootloader status
-    server.on("/api/twi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      JsonDocument doc;
-      
-      // Query bootloader version only (don't query signature - it may kick out of bootloader)
-      String version = "-";
-      
-      if (md11SlaveUpdater) {
-        if (md11SlaveUpdater->queryBootloaderVersion(version)) {
-          doc["connected"] = true;
-          doc["version"] = version;
-          // Hardcode signature for ATmega328P instead of querying
-          doc["signature"] = "1E 95 0F";  // ATmega328P signature
-        } else {
-          doc["connected"] = false;
-        }
-      } else {
-        doc["connected"] = false;
-      }
-      
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
-    });
-    
-    // API: Upload hex file to bootloader
-    server.on("/api/twi/upload", HTTP_POST, 
-      [](AsyncWebServerRequest *request) {}, 
-      nullptr, 
-      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        // Accumulate data in chunks
-        static String uploadBuffer;
-        
-        // First chunk - reset buffer
-        if (index == 0) {
-          uploadBuffer = "";
-          uploadBuffer.reserve(total + 1);
-          Serial.println("[Twiboot API] Upload started, total size: " + String(total) + " bytes");
-        }
-        
-        // Append chunk to buffer
-        for (size_t i = 0; i < len; i++) {
-          uploadBuffer += (char)data[i];
-        }
-        
-        Serial.printf("[Twiboot API] Received chunk: %d/%d bytes (%.1f%%)\n", 
-                     index + len, total, ((index + len) * 100.0) / total);
-        
-        // Only process when we have all data
-        if (index + len != total) {
-          return;
-        }
-        
-        Serial.println("[Twiboot API] All data received, processing...");
-        
-        if (!md11SlaveUpdater) {
-          request->send(400, "application/json", "{\"success\":false,\"error\":\"Twiboot not initialized\"}");
-          uploadBuffer = "";
-          return;
-        }
-        
-        // Parse JSON body with hex content
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, uploadBuffer);
-        
-        if (error) {
-          Serial.println("[Twiboot API] JSON parse error: " + String(error.c_str()));
-          Serial.println("[Twiboot API] Buffer length: " + String(uploadBuffer.length()));
-          Serial.println("[Twiboot API] First 100 chars: " + uploadBuffer.substring(0, 100));
-          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
-          uploadBuffer = "";
-          return;
-        }
-        
-        String hexContent = doc["hexContent"].as<String>();
-        uploadBuffer = "";  // Free memory
-        
-        if (hexContent.length() == 0) {
-          Serial.println("[Twiboot API] Empty hex content");
-          request->send(400, "application/json", "{\"success\":false,\"error\":\"No hex content\"}");
-          return;
-        }
-        
-        Serial.println("[Twiboot API] Hex content size: " + String(hexContent.length()) + " bytes");
-        
-        // NOTE: Do NOT query bootloader version here - it may kick bootloader out of programming mode!
-        // User must click "Enter Bootloader" button first to activate bootloader.
-        Serial.println("[Twiboot API] Starting firmware upload (bootloader must already be active)...");
-        
-        // Upload hex file
-        if (!md11SlaveUpdater->uploadHexFile(hexContent)) {
-          String error = md11SlaveUpdater->getLastError();
-          Serial.println("[Twiboot API] Upload failed: " + error);
-          request->send(500, "application/json", 
-            "{\"success\":false,\"error\":\"" + error + "\"}");
-          return;
-        }
-        
-        Serial.println("[Twiboot API] Upload successful!");
-        request->send(200, "application/json", "{\"success\":true,\"message\":\"Firmware updated\"}");
-      }
-    );
-    
-    // Confirmation page with auto-refresh
-    server.on("/confirm.html", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String message = "Update Successful!";
-      String messageClass = "text-success";
-      
-      // Get message from query parameter if provided
-      if (request->hasParam("message")) {
-        message = request->getParam("message")->value();
-      }
-      if (request->hasParam("type")) {
-        String type = request->getParam("type")->value();
-        if (type == "success") {
-          messageClass = "text-success";
-        } else if (type == "error") {
-          messageClass = "text-error";
-        } else if (type == "warning") {
-          messageClass = "text-warning";
-        }
-      }
-      
-      request->send(LittleFS, "/confirm.html", "text/html", false, [message, messageClass](const String& var) -> String {
-        if (var == "MESSAGE") {
-          return message;
-        }
-        if (var == "MESSAGE_CLASS") {
-          return messageClass;
-        }
-        if (var == "RELOAD_BUTTON") {
-          return ""; // No button needed, auto-refresh handles it
-        }
-        return String();
-      });
-    });
-    
-    // API: Scan I2C bus
-    server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-      
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-      
-      JsonDocument doc;
-      
-      // Scan Bus 0 (Display Bus - GPIO8/9 @ 100kHz)
-      JsonArray bus0Devices = doc["bus0"]["devices"].to<JsonArray>();
-      doc["bus0"]["name"] = "Bus 0: Display (GPIO8/9 @ 100kHz)";
-      doc["bus0"]["speed"] = "100 kHz";
-      doc["bus0"]["pins"] = "GPIO8(SDA), GPIO9(SCL)";
-      
-      for (uint8_t address = 0x03; address < 0x78; address++) {
-        if (I2CManager::getInstance().ping(address, I2C_BUS_DISPLAY)) {
-          JsonObject device = bus0Devices.add<JsonObject>();
-          
-          char hexAddr[5];
-          sprintf(hexAddr, "0x%02X", address);
-          device["address"] = hexAddr;
-          device["decimal"] = address;
-          device["bus"] = 0;
-          
-          // Add device name if known
-          String deviceName = "Unknown";
-          if (address == 0x3C || address == 0x3D) deviceName = "SSD1306 OLED Display";
-          else if (address == 0x27 || address == 0x3F) deviceName = "PCF8574 LCD 16x2";
-          else if (address == 0x36) deviceName = "Seesaw Rotary Encoder";
-          else if (address == 0x38) deviceName = "AHT10 Temperature & Humidity Sensor";
-          else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280 Sensor";
-          else if (address == 0x68) deviceName = "MPU6050/DS3231 RTC";
-          else if (address == 0x48) deviceName = "ADS1115 ADC";
-          else if (address == 0x20) deviceName = "PCF8574 I/O Expander";
-          
-          device["name"] = deviceName;
-        }
-        yield();
-      }
-      doc["bus0"]["count"] = bus0Devices.size();
-      
-      // Scan Bus 1 (Slave Bus - GPIO5/6 @ 100kHz)
-      JsonArray bus1Devices = doc["bus1"]["devices"].to<JsonArray>();
-      doc["bus1"]["name"] = "Bus 1: Slave (GPIO5/6 @ 100kHz)";
-      doc["bus1"]["speed"] = "100 kHz";
-      doc["bus1"]["pins"] = "GPIO5(SDA), GPIO6(SCL)";
-      
-      for (uint8_t address = 0x03; address < 0x78; address++) {
-        if (I2CManager::getInstance().ping(address, I2C_BUS_SLAVE)) {
-          JsonObject device = bus1Devices.add<JsonObject>();
-          
-          char hexAddr[5];
-          sprintf(hexAddr, "0x%02X", address);
-          device["address"] = hexAddr;
-          device["decimal"] = address;
-          device["bus"] = 1;
-          
-          // Add device name if known
-          String deviceName = "Unknown";
-          if (address == 0x30) deviceName = "MS11 Slave Controller (ATmega328P)";
-          else if (address == 0x14) deviceName = "Twiboot Bootloader (ATmega328P)";
-          
-          device["name"] = deviceName;
-        }
-        yield();
-      }
-      doc["bus1"]["count"] = bus1Devices.size();
-      
-      // Total summary
-      doc["totalDevices"] = bus0Devices.size() + bus1Devices.size();
-      
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
-    });
-
-    // API: I2C LED control (DEPRECATED - use SlaveController instead)
-    // TODO: Replace with actual slave control endpoints
-    // Example: /api/fan/set, /api/igniter/set, etc.
-    /*
-    server.on("/api/i2c/led", HTTP_POST, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-
-      request->send(501, "application/json", "{\"error\":\"Endpoint removed - use SlaveController API instead\"}");
-    });
-    */
-    // Placeholder comment to indicate old LED demo code was removed
-
-    // DEPRECATED ENDPOINTS (commented out for refactoring)
-    // TODO: Implement proper SlaveController API endpoints
-    // - /api/slave/temperature
-    // - /api/slave/fan
-    // - /api/slave/igniter
-    // - /api/slave/auger
-    // - /api/bootloader/* endpoints
-    // 
-    // OLD ENDPOINTS - Lines below are commented out as they use undefined constants
-    // and old Wire API. They will be rewritten to use SlaveController and I2CManager.
-    /*
-    // API: I2C LED status (DEPRECATED)
-    server.on("/api/i2c/led/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      // OLD CODE - DO NOT USE
-    });
-    
-    // API: Exit bootloader mode (DEPRECATED)
-    server.on("/api/i2c/exit-bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
-      // OLD CODE - DO NOT USE
-    });
-    
-    // API: Reset Arduino (DEPRECATED)
-    server.on("/api/i2c/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
-      // OLD CODE - DO NOT USE
-    });
-    */
-    
-    // API: Get device register dump
-    server.on("/api/i2c/registers", HTTP_GET, [](AsyncWebServerRequest *request) {
-      bool debugEnabledBool = (debugEnabled == "true" || debugEnabled == "on");
-      
-      if (!debugEnabledBool) {
-        request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
-        return;
-      }
-      
-      if (!request->hasParam("address")) {
-        request->send(400, "application/json", "{\"error\":\"Missing address parameter\"}");
-        return;
-      }
-      
-      if (!request->hasParam("bus")) {
-        request->send(400, "application/json", "{\"error\":\"Missing bus parameter\"}");
-        return;
-      }
-      
-      uint8_t address = request->getParam("address")->value().toInt();
-      uint8_t busNum = request->getParam("bus")->value().toInt();
-      I2CBus bus = (busNum == 0) ? I2C_BUS_DISPLAY : I2C_BUS_SLAVE;
-      
-      JsonDocument doc;
-      JsonArray registers = doc["registers"].to<JsonArray>();
-      
-      unsigned long scanStart = millis();
-      int errorCount = 0;
-      unsigned long responseStart = 0;
-      unsigned long responseTime = 0;
-      
-      // Test device response
-      responseStart = micros();
-      bool devicePresent = I2CManager::getInstance().ping(address, bus);
-      responseTime = (micros() - responseStart) / 1000;
-      
-      if (devicePresent) {
-        // Device responded, try to read registers
-        for (uint16_t reg = 0; reg < 256; reg++) {
-          uint8_t value = 0xFF;
-          
-          // Try to read register via I2CManager
-          bool success = false;
-          if (bus == I2C_BUS_DISPLAY) {
-            // For display bus, use manual write-then-read
-            uint8_t regAddr = (uint8_t)reg;
-            if (I2CManager::getInstance().displayWrite(address, &regAddr, 1, 50)) {
-              success = I2CManager::getInstance().displayRead(address, &value, 1, 50);
-            }
-          } else {
-            success = I2CManager::getInstance().readRegister(address, (uint8_t)reg, value, 50);
-          }
-          
-          if (!success) {
-            value = 0xFF;
-            errorCount++;
-          }
-          
-          registers.add(value);
-          yield(); // Prevent watchdog timeout
-        }
-      } else {
-        errorCount = 256;
-      }
-      
-      unsigned long scanDuration = millis() - scanStart;
-      
-      // Metrics
-      doc["scanDuration"] = scanDuration;
-      doc["responseTime"] = responseTime;
-      doc["busSpeed"] = 100; // Both buses: 100kHz
-      doc["errors"] = errorCount;
-      
-      String response;
-      serializeJson(doc, response);
-      request->send(200, "application/json", response);
-    });
-    
-    // API: Get update status
-    server.on("/api/update/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String response = githubUpdater->handleStatusRequest(
-        currentFirmwareVersion, 
-        currentFilesystemVersion,
-        (updatesEnabled == "on" || updatesEnabled == "true"),
-        (debugEnabled == "on" || debugEnabled == "true"),
-        (githubToken.length() > 0)
-      );
-      request->send(200, "application/json", response);
-    });
-    
-    // API: Check for updates
-    server.on("/api/update/check", HTTP_POST, [](AsyncWebServerRequest *request) {
-      String response = githubUpdater->handleCheckRequest(
-        updateUrl, githubToken, 
-        currentFirmwareVersion, currentFilesystemVersion
-      );
-      request->send(200, "application/json", response);
-    });
-    
-    // API: Install update
-    server.on("/api/update/install", HTTP_POST, [](AsyncWebServerRequest *request) {
-      String type = "both";
-      if (request->hasParam("type", true)) {
-        type = request->getParam("type", true)->value();
-      }
-      
-      bool shouldReboot = false;
-      String response = githubUpdater->handleInstallRequest(
-        type, githubToken,
-        currentFirmwareVersion, currentFilesystemVersion,
-        shouldReboot
-      );
-      
-      request->send(200, "application/json", response);
-      
-      if (shouldReboot) {
-        Serial.println("Update successful, rebooting in 1 second...");
-        delay(1000);
-        ESP.restart();
-      }
-    });
-    
-    // API: Reinstall current version (debug only)
-    server.on("/api/update/reinstall", HTTP_POST, [](AsyncWebServerRequest *request) {
-      String type = "both";
-      if (request->hasParam("type", true)) {
-        type = request->getParam("type", true)->value();
-      }
-      
-      bool shouldReboot = false;
-      String response = githubUpdater->handleReinstallRequest(
-        type, githubToken,
-        currentFirmwareVersion, currentFilesystemVersion,
-        (debugEnabled == "on" || debugEnabled == "true"),
-        shouldReboot
-      );
-      
-      request->send(200, "application/json", response);
-      
-      if (shouldReboot) {
-        Serial.println("Reinstall successful, rebooting in 1 second...");
-        delay(1000);
-        ESP.restart();
-      }
-    });
-    
-    // API: List all files
-    server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String json = "[";
-      File root = LittleFS.open("/");
-      File file = root.openNextFile();
-      bool first = true;
-      
-      while (file) {
-        if (!file.isDirectory()) {
-          if (!first) json += ",";
-          String filename = String(file.name());
-          if (!filename.startsWith("/")) filename = "/" + filename;
-          json += "{\"name\":\"" + filename + "\",\"size\":" + String(file.size()) + "}";
-          first = false;
-        }
-        file = root.openNextFile();
-      }
-      json += "]";
-      request->send(200, "application/json", json);
-    });
-    
-    // API: Read file
-    server.on("/api/file", HTTP_GET, [](AsyncWebServerRequest *request) {
-      if (request->hasParam("path")) {
-        String path = request->getParam("path")->value();
-        if (!path.startsWith("/")) path = "/" + path;
-        if (LittleFS.exists(path)) {
-          request->send(LittleFS, path, "text/plain");
-        } else {
-          request->send(404, "text/plain", "File not found");
-        }
-      } else {
-        request->send(400, "text/plain", "Missing path parameter");
-      }
-    });
-    
-    // API: Write file
-    server.on("/api/file", HTTP_POST, [](AsyncWebServerRequest *request) {
-      if (request->hasParam("path", true) && request->hasParam("content", true)) {
-        String path = request->getParam("path", true)->value();
-        if (!path.startsWith("/")) path = "/" + path;
-        String content = request->getParam("content", true)->value();
-        
-        File file = LittleFS.open(path, "w");
-        if (file) {
-          file.print(content);
-          file.close();
-          request->send(200, "text/plain", "File saved");
-        } else {
-          request->send(500, "text/plain", "Error writing file");
-        }
-      } else {
-        request->send(400, "text/plain", "Missing parameters");
-      }
-    });
-    
-    // API: Delete file
-    server.on("/api/file", HTTP_DELETE, [](AsyncWebServerRequest *request) {
-      if (request->hasParam("path")) {
-        String path = request->getParam("path")->value();
-        if (!path.startsWith("/")) path = "/" + path;
-        if (LittleFS.exists(path)) {
-          if (LittleFS.remove(path)) {
-            request->send(200, "text/plain", "File deleted");
-          } else {
-            request->send(500, "text/plain", "Error deleting file");
-          }
-        } else {
-          request->send(404, "text/plain", "File not found");
-        }
-      } else {
-        request->send(400, "text/plain", "Missing path parameter");
-      }
-    });
-    
-    // API: Upload file
-    server.on("/api/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-      request->send(200);
-    }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-      static File uploadFile;
-      
-      if (index == 0) {
-        // Start of upload
-        String path = "/" + filename;
-        uploadFile = LittleFS.open(path, "w");
-      }
-      
-      if (uploadFile) {
-        uploadFile.write(data, len);
-      }
-      
-      if (final) {
-        // End of upload
-        if (uploadFile) {
-          uploadFile.close();
-        }
-      }
-    });
-    
-    // Serve static files (CSS, images, etc.) - must be last
-    server.serveStatic("/", LittleFS, "/");
+    // Register all STA-mode web routes
+    registerSTARoutes(server);
     
     // Start ArduinoOTA if enabled
     if (otaEnabled == "on" || otaEnabled == "true") {
@@ -1419,11 +362,9 @@ void setup() {
     
     // Show AP mode on LCD
     LCDManager::getInstance().clear();
-    delay(100);
     LCDManager::getInstance().printLine(0, "WiFi manager");
-    delay(100);
-    // Show AP SSID on line 1
     LCDManager::getInstance().printLine(1, "ESP-WIFI-MANAGER");
+    startupBlinkDone = true;  // Stop startup blink in AP mode
     
     // NULL sets an open Access Point
     WiFi.softAP("ESP-WIFI-MANAGER", NULL);
@@ -1442,136 +383,8 @@ void setup() {
     lastScanTime = millis();
     Serial.println("Initial WiFi scan started");
 
-    // Web Server Root URL - Captive Portal
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(LittleFS, "/wifimanager.html", "text/html");
-    });
-
-    // Catch-all for captive portal - redirect everything to root
-    server.onNotFound([](AsyncWebServerRequest *request){
-      request->send(LittleFS, "/wifimanager.html", "text/html");
-    });
-    
-    // WiFi scan endpoint - return cached results
-    server.on("/scan", HTTP_GET, [](AsyncWebServerRequest *request){
-      unsigned long currentTime = millis();
-      
-      // If no cached results or cache expired, trigger async scan
-      if (cachedScanResults.isEmpty() || (currentTime - lastScanTime > WIFI_SCAN_CACHE_INTERVAL)) {
-        if (!scanInProgress) {
-          scanInProgress = true;
-          WiFi.scanNetworks(true); // Start async scan
-          lastScanTime = currentTime;
-        }
-        
-        // Check if scan completed
-        int n = WiFi.scanComplete();
-        if (n >= 0) {
-          // Scan completed, build JSON
-          String json = "{\"networks\":[";
-          for (int i = 0; i < n; ++i) {
-            if (i) json += ",";
-            json += "{";
-            json += "\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\"";
-            json += ",\"rssi\":" + String(WiFi.RSSI(i));
-            json += ",\"encryption\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false");
-            json += "}";
-          }
-          json += "]}";
-          cachedScanResults = json;
-          WiFi.scanDelete();
-          scanInProgress = false;
-        } else if (n == WIFI_SCAN_RUNNING) {
-          // Scan still in progress, return empty or old cache
-          if (cachedScanResults.isEmpty()) {
-            request->send(200, "application/json", "{\"networks\":[],\"scanning\":true}");
-            return;
-          }
-        }
-      }
-      
-      // Return cached results
-      request->send(200, "application/json", cachedScanResults);
-    });
-    
-    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
-      int params = request->params();
-      bool settingsChanged = false;
-      for(int i=0;i<params;i++){
-        const AsyncWebParameter* p = request->getParam(i);
-        if(p->isPost()){
-          // HTTP POST ssid value
-          if (p->name() == PARAM_INPUT_1) {
-            ssid = p->value().c_str();
-            Serial.print("SSID set to: ");
-            Serial.println(ssid);
-            settingsChanged = true;
-          }
-          // HTTP POST pass value
-          if (p->name() == PARAM_INPUT_2) {
-            pass = p->value().c_str();
-            Serial.println("Password updated (not logged for security)");
-            // Save password to NVS
-            preferences.begin("config", false);
-            preferences.putString("pass", pass);
-            preferences.end();
-          }
-          // HTTP POST ip value
-          if (p->name() == PARAM_INPUT_3) {
-            ip = p->value().c_str();
-            Serial.print("IP Address set to: ");
-            Serial.println(ip);
-            settingsChanged = true;
-          }
-          // HTTP POST gateway value
-          if (p->name() == PARAM_INPUT_4) {
-            gateway = p->value().c_str();
-            Serial.print("Gateway set to: ");
-            Serial.println(gateway);
-            settingsChanged = true;
-          }
-          // HTTP POST dhcp value
-          if (p->name() == PARAM_INPUT_5) {
-            useDHCP = p->value().c_str();
-            Serial.print("DHCP set to: ");
-            Serial.println(useDHCP);
-            settingsChanged = true;
-          }
-        }
-      }
-      // If DHCP checkbox was not checked, it won't be in POST data
-      bool dhcpChecked = false;
-      for(int i=0;i<params;i++){
-        const AsyncWebParameter* p = request->getParam(i);
-        if(p->isPost() && p->name() == PARAM_INPUT_5){
-          dhcpChecked = true;
-          break;
-        }
-      }
-      if(!dhcpChecked){
-        useDHCP = "false";
-        settingsChanged = true;
-        Serial.println("DHCP set to: false");
-      }
-      
-      // Save all network settings to config file
-      if (settingsChanged) {
-        settings.saveNetwork();
-      }
-      
-      String responseMsg = "Done. ESP will restart and connect to your router";
-      if (useDHCP == "on" || useDHCP == "true") {
-        responseMsg += " using DHCP.";
-      } else {
-        responseMsg += " using IP address: " + ip;
-      }
-      request->send(200, "text/plain", responseMsg);
-      delay(3000);
-      ESP.restart();
-    });
-    
-    // Serve static files (CSS, images, etc.) - must be last
-    server.serveStatic("/", LittleFS, "/");
+    // Register AP-mode web routes (captive portal)
+    registerAPRoutes(server, dnsServer);
     
     server.begin();
   }  // End of else (AP mode)
@@ -1583,6 +396,9 @@ void setup() {
 
 // Track if LCD has been updated with final status
 bool lcdStatusShown = false;
+
+// Track last startup blink state to avoid unnecessary LCD writes
+bool lastStartupBlinkVisible = true;
 
 // Handle display tasks (IP display timeout, sensor readings, etc.)
 void handleDisplayTasks() {
@@ -1602,8 +418,8 @@ void handleDisplayTasks() {
     lastSensorRead = now;
   }
 
-  // Update display every 1 second with temperature and humidity
-  if ((now - lastDisplayUpdate >= 1000) && DisplayManager::getInstance().isInitialized()) {
+  // Update display every 1 second with temperature and humidity (only after startup complete)
+  if (ipDisplayCleared && (now - lastDisplayUpdate >= 1000) && DisplayManager::getInstance().isInitialized()) {
     lastDisplayUpdate = now;
     
     DisplayManager::getInstance().clear();
@@ -1618,60 +434,160 @@ void handleDisplayTasks() {
     DisplayManager::getInstance().updateDisplay();
   }
   
+  // ---- Non-blocking LED pulse handling ----
+  if (ledPulseActive) {
+    unsigned long elapsed = millis() - ledPulseStartTime;
+    if (elapsed >= ledPulseDurationMs) {
+      // Pulse duration elapsed - turn LED off
+      SlaveController::getInstance().setLed(false);
+      Serial.printf("[Main] LED pulse complete (%dms)\n", ledPulseDurationMs);
+      ledPulseActive = false;
+    }
+  }
+  
+  // ---- Startup blink: "Starting up..." blinks on line 1 (600ms on / 400ms off) ----
+  if (!startupBlinkDone && LCDManager::getInstance().isInitialized()) {
+    bool visible = blinkState(now, 600, 400);
+    if (visible != lastStartupBlinkVisible) {
+      lastStartupBlinkVisible = visible;
+      LCDManager::getInstance().printLine(1, visible ? "Starting up..." : "");
+    }
+  }
+  
   // Non-blocking IP display clear after timeout
   if (ipDisplayShown && !ipDisplayCleared && (millis() - ipDisplayTime > DISPLAY_IP_SHOW_DURATION)) {
     DisplayManager::getInstance().clear();
     DisplayManager::getInstance().updateDisplay();
     
-    // Update LCD with system ready status (only once)
-    if (!lcdStatusShown) {
-      Serial.println("Setting LCD to ready status...");
-      delay(200);  // Give LCD time to settle
-      
+    // Show MS11-control detection (show for 2 seconds)
+    if (!ms11DetectionShown) {
       if (LCDManager::getInstance().isInitialized()) {
         LCDManager::getInstance().clear();
-        delay(100);
-        LCDManager::getInstance().printLine(0, "Ready...");
-        delay(50);
+        LCDManager::getInstance().printLine(0, "MS11-control");
+        LCDManager::getInstance().printLine(1, ms11Present ? "Detected" : "Absent");
+        ms11DetectionShown = true;
+        ms11DetectionTime = millis();  // Reset timer for 2-second display
+        
+        // Trigger 500ms LED pulse on MS11-control when detected
+        if (ms11Present) {
+          Serial.println("[Main] Sending 500ms detection pulse...");
+          if (SlaveController::getInstance().pulseLed(500)) {
+            ledPulseStartTime = millis();
+            ledPulseDurationMs = 500;
+            ledPulseActive = true;
+          } else {
+            Serial.println("[Main] ERROR: Detection pulse failed!");
+          }
+        }
+      }
+    } else if (!lcdStatusShown && (millis() - ms11DetectionTime > 2000)) {
+      // After MS11 detection message, show ready status
+      if (LCDManager::getInstance().isInitialized()) {
+        LCDManager::getInstance().clear();
+        LCDManager::getInstance().printLine(0, "Ready.");
         LCDManager::getInstance().printLine(1, "");
-        Serial.println("LCD updated with status");
         lcdStatusShown = true;
-      } else {
-        Serial.println("LCD not initialized");
       }
     }
     
-    ipDisplayCleared = true;
+    if (lcdStatusShown) {
+      ipDisplayCleared = true;
+    }
   }
   
-  // Update LCD time display every 500ms for blinking colon (2 Hz) - only after IP display cleared and if NTP enabled
-  if (ipDisplayCleared && LCDManager::getInstance().isInitialized() && Settings::stringToBool(ntpEnabled)) {
-    if ((now - lastLcdTimeUpdate >= 500)) {
-      lastLcdTimeUpdate = now;
-      
-      // Get current time with timezone offset
-      time_t rawTime = time(nullptr);
-      if (rawTime >= NTP_VALID_TIME) {  // Check if time is synchronized
-        // Parse timezone offset
-        int timezoneOffsetHours = 0;
-        if (timezone.startsWith("UTC+")) {
-          timezoneOffsetHours = timezone.substring(4).toInt();
-        } else if (timezone.startsWith("UTC-")) {
-          timezoneOffsetHours = -timezone.substring(4).toInt();
+  // ---- Heartbeat / reconnect: ping MS11-control every 2 seconds ----
+  if (ipDisplayCleared && (now - lastHeartbeatTime >= 2000)) {
+    lastHeartbeatTime = now;
+    if (ms11Present) {
+      // Heartbeat: verify MS11-control is still alive
+      Serial.println("[Main] Heartbeat: pinging MS11-control...");
+      if (SlaveController::getInstance().ping()) {
+        Serial.println("[Main] Sending 2ms heartbeat pulse...");
+        if (SlaveController::getInstance().pulseLed(2)) {
+          ledPulseStartTime = millis();
+          ledPulseDurationMs = 2;
+          ledPulseActive = true;
+        } else {
+          Serial.println("[Main] ERROR: Heartbeat pulse failed!");
         }
-        
-        time_t localTime = rawTime + (timezoneOffsetHours * 3600);
-        struct tm timeinfo;
-        gmtime_r(&localTime, &timeinfo);
-        
-        // Format: "DD-MM-YYYY HH:MM" with blinking colon (16 chars, fits 16x2 LCD)
-        // Use universal blink helper: 500ms interval = 2 Hz
-        bool colonVisible = getBlinkState(now, 500);
-        char timeStr[17];
-        snprintf(timeStr, sizeof(timeStr), "%02d-%02d-%04d %02d%c%02d",
-                 timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
-                 timeinfo.tm_hour, colonVisible ? ':' : ' ', timeinfo.tm_min);
-        
+      } else {
+        // Lost contact — start blinking "Connection lost!"
+        Serial.println("[Main] ERROR: Lost contact with MS11-control!");
+        ms11Present = false;
+        ms11ConnectionLost = true;
+        ms11Restored = false;
+        lastConnectionLostBlink = true;
+        if (LCDManager::getInstance().isInitialized()) {
+          LCDManager::getInstance().clear();
+          LCDManager::getInstance().printLine(0, "MS11-Control");
+          LCDManager::getInstance().printLine(1, "Connection lost!");
+        }
+      }
+    } else {
+      // Reconnect: try to re-establish contact with MS11-control
+      Serial.println("[Main] Reconnect: trying MS11-control...");
+      if (SlaveController::getInstance().ping()) {
+        Serial.println("[Main] MS11-control reconnected!");
+        ms11Present = true;
+        ms11ConnectionLost = false;
+        ms11Restored = true;
+        ms11RestoredTime = millis();
+        if (LCDManager::getInstance().isInitialized()) {
+          LCDManager::getInstance().clear();
+          LCDManager::getInstance().printLine(0, "MS11-Control");
+          LCDManager::getInstance().printLine(1, "Restored");
+        }
+        // Send detection pulse on reconnect
+        if (SlaveController::getInstance().pulseLed(500)) {
+          ledPulseStartTime = millis();
+          ledPulseDurationMs = 500;
+          ledPulseActive = true;
+        }
+      }
+    }
+  }
+  
+  // ---- Blink "Connection lost!" on LCD when MS11-control is absent ----
+  if (ms11ConnectionLost && LCDManager::getInstance().isInitialized()) {
+    bool visible = blinkState(now, 600, 400);
+    if (visible != lastConnectionLostBlink) {
+      lastConnectionLostBlink = visible;
+      LCDManager::getInstance().printLine(1, visible ? "Connection lost!" : "");
+    }
+  }
+  
+  // ---- Non-blocking return to normal display after "Restored" (3 seconds) ----
+  if (ms11Restored && (now - ms11RestoredTime >= 3000)) {
+    ms11Restored = false;
+    if (LCDManager::getInstance().isInitialized()) {
+      LCDManager::getInstance().clear();
+      LCDManager::getInstance().printLine(0, "Ready.");
+      LCDManager::getInstance().printLine(1, "");
+    }
+  }
+  
+  // ---- LCD time display: synced to real seconds, colon 600ms on / 400ms off ----
+  // Only show clock when MS11-control is connected (ms11Present) and not during "Restored" message
+  if (ipDisplayCleared && lcdStatusShown && ms11Present && !ms11Restored && LCDManager::getInstance().isInitialized() && Settings::stringToBool(ntpEnabled)) {
+    time_t rawTime = time(nullptr);
+    if (rawTime >= NTP_VALID_TIME) {
+      int timezoneOffsetHours = parseTimezoneOffset(timezone);
+      
+      time_t localTime = rawTime + (timezoneOffsetHours * 3600);
+      struct tm timeinfo;
+      gmtime_r(&localTime, &timeinfo);
+      
+      // Colon blink synced to seconds: visible first 600ms of each second
+      bool colonVisible = blinkState(now, 600, 400);
+      char timeStr[17];
+      snprintf(timeStr, sizeof(timeStr), "%02d-%02d-%04d %02d%c%02d",
+               timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
+               timeinfo.tm_hour, colonVisible ? ':' : ' ', timeinfo.tm_min);
+      
+      // Only update LCD when string actually changed
+      static char lastTimeStr[17] = "";
+      if (strcmp(timeStr, lastTimeStr) != 0) {
+        strncpy(lastTimeStr, timeStr, sizeof(lastTimeStr));
         LCDManager::getInstance().printLine(1, String(timeStr));
       }
     }
@@ -1804,7 +720,6 @@ void handleNeopixelTasks() {
 // MAIN LOOP
 // ============================================================================
 
-
 void loop() {
   // Update GPIO states (buttons, switch, LED animations)
   GPIOManager::getInstance().update();
@@ -1817,6 +732,10 @@ void loop() {
   // Small delay to prevent excessive CPU usage
   delay(LOOP_DELAY);
 }
+
+// ============================================================================
+// REBOOT
+// ============================================================================
 
 // Function to show reboot message and restart
 void performReboot() {

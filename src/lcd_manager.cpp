@@ -142,7 +142,6 @@ void LCDManager::printLine(uint8_t row, const String& text) {
     return;
   }
   
-  Serial.println("[LCD] printLine(row=" + String(row) + ", text='" + text + "')");
   setCursor(0, row);
   // Print text padded to full line width (clear any remaining chars)
   String padded = text;
@@ -150,9 +149,7 @@ void LCDManager::printLine(uint8_t row, const String& text) {
     padded += " ";
   }
   String output = padded.substring(0, cols);
-  Serial.println("[LCD] Writing: '" + output + "' (len=" + String(output.length()) + ")");
   print(output);
-  delay(100);  // Give LCD time to render
 }
 
 void LCDManager::clearLine(uint8_t row) {

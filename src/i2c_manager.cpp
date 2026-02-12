@@ -280,23 +280,61 @@ bool I2CManager::write(uint8_t address, const uint8_t* data, uint16_t length,
     return false;
   }
 
+  Serial.printf("[I2CManager] WRITE attempt: 0x%02X, %d bytes, timeout=%dms\n", address, length, timeout_ms);
+
+  // First try slave bus (GPIO5/6)
+  Serial.println("[I2CManager] Trying slave bus (GPIO5/6)...");
   if (!acquireLock(slaveMutex, timeout_ms)) {
+    Serial.println("[I2CManager] Slave bus MUTEX LOCKED");
     setError(I2C_ERROR_BUS_BUSY);
     return false;
   }
 
   slaveBus->beginTransmission(address);
-  slaveBus->write(data, length);
+  size_t written = slaveBus->write(data, length);
   uint8_t error = slaveBus->endTransmission();
+  
+  Serial.printf("[I2CManager] Slave bus: wrote=%d bytes, error=%d\n", written, error);
 
   bool success = (error == 0);
+  releaseLock(slaveMutex);
+  
+  if (success) {
+    Serial.printf("[I2CManager] ✓ WRITE to 0x%02X SUCCEEDED on slave bus\n", address);
+    setError(I2C_OK);
+    return true;
+  }
+  
+  // If slave bus failed, try display bus as fallback
+  Serial.println("[I2CManager] Slave bus failed, trying display bus (GPIO8/9)...");
+  
+  if (!acquireLock(displayMutex, timeout_ms)) {
+    Serial.println("[I2CManager] Display bus MUTEX LOCKED");
+    setError(I2C_ERROR_BUS_BUSY);
+    return false;
+  }
+
+  displayBus->beginTransmission(address);
+  written = displayBus->write(data, length);
+  error = displayBus->endTransmission();
+
+  Serial.printf("[I2CManager] Display bus: wrote=%d bytes, error=%d\n", written, error);
+
+  success = (error == 0);
+  releaseLock(displayMutex);
+  
+  if (success) {
+    Serial.printf("[I2CManager] ✓ WRITE to 0x%02X SUCCEEDED on display bus!\n", address);
+  } else {
+    Serial.printf("[I2CManager] ✗ WRITE to 0x%02X FAILED on both buses\n", address);
+  }
+  
   if (success) {
     setError(I2C_OK);
   } else {
     setError(I2C_ERROR_NACK, error);
   }
 
-  releaseLock(slaveMutex);
   return success;
 }
 
@@ -307,6 +345,8 @@ bool I2CManager::read(uint8_t address, uint8_t* buffer, uint16_t length,
     return false;
   }
 
+  // TEMPORARY DEBUG: Try both buses for read
+  // First try slave bus (GPIO5/6)
   if (!acquireLock(slaveMutex, timeout_ms)) {
     setError(I2C_ERROR_BUS_BUSY);
     return false;
@@ -319,11 +359,36 @@ bool I2CManager::read(uint8_t address, uint8_t* buffer, uint16_t length,
     }
     success = true;
     setError(I2C_OK);
-  } else {
+  }
+  releaseLock(slaveMutex);
+  
+  // If slave bus failed, try display bus as fallback
+  if (!success) {
+    Serial.printf("[I2CManager] Read from 0x%02X failed on slave bus, trying display bus...\n", address);
+    
+    if (!acquireLock(displayMutex, timeout_ms)) {
+      setError(I2C_ERROR_BUS_BUSY);
+      return false;
+    }
+
+    if (displayBus->requestFrom(address, (uint8_t)length) == length) {
+      for (uint16_t i = 0; i < length; i++) {
+        buffer[i] = displayBus->read();
+      }
+      success = true;
+      setError(I2C_OK);
+    }
+    releaseLock(displayMutex);
+    
+    if (success) {
+      Serial.printf("[I2CManager] Read from 0x%02X succeeded on display bus!\n", address);
+    }
+  }
+  
+  if (!success) {
     setError(I2C_ERROR_NACK);
   }
 
-  releaseLock(slaveMutex);
   return success;
 }
 
