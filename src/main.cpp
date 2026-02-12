@@ -16,6 +16,7 @@
 #include "lcd_manager.h"
 #include "seesaw_rotary.h"
 #include "aht10_manager.h"
+#include "probe_manager.h"
 #include "gpio_manager.h"
 #include "slave_controller.h"
 #include "github_updater.h"
@@ -148,7 +149,7 @@ void delayWithBlink(unsigned long ms) {
       bool visible = blinkState(millis(), 600, 400);
       if (visible != lastVisible) {
         lastVisible = visible;
-        LCDManager::getInstance().printLine(1, visible ? "Starting up..." : "");
+        LCDManager::getInstance().printLine(1, visible ? " Starting up..." : "");
       }
     }
     delay(10);  // Small yield to avoid WDT
@@ -185,7 +186,7 @@ void setup() {
     // Show startup message on LCD (line 1 will blink in loop)
     LCDManager::getInstance().clear();
     LCDManager::getInstance().printLine(0, "*MagicSmoker 11*");
-    LCDManager::getInstance().printLine(1, "Starting up...");
+    LCDManager::getInstance().printLine(1, " Starting up...");
     startupBlinkStart = millis();
     startupBlinkDone = false;
   }
@@ -212,6 +213,11 @@ void setup() {
   // Initialize Slave Controller (Bus 0: GPIO6/7)
   if (!SlaveController::getInstance().begin()) {
     Serial.println("WARNING: Slave controller not responding - check I2C wiring");
+  }
+
+  // Initialize Probe Manager (aggregated temperature from multiple sources)
+  if (!ProbeManager::getInstance().begin()) {
+    Serial.println("WARNING: Probe Manager initialization did not detect any temperature sensors");
   }
   
   // Update display managers with version info after delays
@@ -419,38 +425,32 @@ void handleDisplayTasks() {
   }
 
   // Update display every 1 second with temperature and humidity (only after startup complete)
+  // Only redraw OLED when sensor data actually changed to avoid unnecessary I2C traffic
   if (ipDisplayCleared && (now - lastDisplayUpdate >= 1000) && DisplayManager::getInstance().isInitialized()) {
     lastDisplayUpdate = now;
     
-    DisplayManager::getInstance().clear();
-    
-    // Show temperature and humidity in same font and position as IP address
-    DisplayManager::getInstance().setFont(ArialMT_Plain_10);
     float temp = AHT10Manager::getInstance().getTemperature();
     float humidity = AHT10Manager::getInstance().getHumidity();
     String sensorInfo = String(temp, 1) + "°C  " + String(humidity, 0) + "%";
-    DisplayManager::getInstance().drawString(0, 0, sensorInfo);
     
-    DisplayManager::getInstance().updateDisplay();
-  }
-  
-  // ---- Non-blocking LED pulse handling ----
-  if (ledPulseActive) {
-    unsigned long elapsed = millis() - ledPulseStartTime;
-    if (elapsed >= ledPulseDurationMs) {
-      // Pulse duration elapsed - turn LED off
-      SlaveController::getInstance().setLed(false);
-      Serial.printf("[Main] LED pulse complete (%dms)\n", ledPulseDurationMs);
-      ledPulseActive = false;
+    static String lastSensorInfo = "";
+    if (sensorInfo != lastSensorInfo) {
+      lastSensorInfo = sensorInfo;
+      DisplayManager::getInstance().clear();
+      DisplayManager::getInstance().setFont(ArialMT_Plain_10);
+      DisplayManager::getInstance().drawString(0, 0, sensorInfo);
+      DisplayManager::getInstance().updateDisplay();
     }
   }
+  
+  // NOTE: LED pulse check moved to top of loop() for accurate timing
   
   // ---- Startup blink: "Starting up..." blinks on line 1 (600ms on / 400ms off) ----
   if (!startupBlinkDone && LCDManager::getInstance().isInitialized()) {
     bool visible = blinkState(now, 600, 400);
     if (visible != lastStartupBlinkVisible) {
       lastStartupBlinkVisible = visible;
-      LCDManager::getInstance().printLine(1, visible ? "Starting up..." : "");
+      LCDManager::getInstance().printLine(1, visible ? " Starting up..." : "");
     }
   }
   
@@ -470,13 +470,10 @@ void handleDisplayTasks() {
         
         // Trigger 500ms LED pulse on MS11-control when detected
         if (ms11Present) {
-          Serial.println("[Main] Sending 500ms detection pulse...");
           if (SlaveController::getInstance().pulseLed(500)) {
             ledPulseStartTime = millis();
             ledPulseDurationMs = 500;
             ledPulseActive = true;
-          } else {
-            Serial.println("[Main] ERROR: Detection pulse failed!");
           }
         }
       }
@@ -484,8 +481,6 @@ void handleDisplayTasks() {
       // After MS11 detection message, show ready status
       if (LCDManager::getInstance().isInitialized()) {
         LCDManager::getInstance().clear();
-        LCDManager::getInstance().printLine(0, "Ready.");
-        LCDManager::getInstance().printLine(1, "");
         lcdStatusShown = true;
       }
     }
@@ -494,25 +489,34 @@ void handleDisplayTasks() {
       ipDisplayCleared = true;
     }
   }
+
+  // ---- Ready display with blinking period ----
+  if (lcdStatusShown && ipDisplayCleared && !ms11ConnectionLost && !ms11Restored && LCDManager::getInstance().isInitialized()) {
+    // Blinking period after Ready: visible first 600ms of each second
+    bool periodVisible = blinkState(now, 600, 400);
+    static bool lastPeriodVisible = true;
+    static bool readyLineInitialized = false;
+    if (!readyLineInitialized || periodVisible != lastPeriodVisible) {
+      readyLineInitialized = true;
+      lastPeriodVisible = periodVisible;
+      LCDManager::getInstance().printLine(0, periodVisible ? "Ready." : "Ready ");
+    }
+  }
   
   // ---- Heartbeat / reconnect: ping MS11-control every 2 seconds ----
   if (ipDisplayCleared && (now - lastHeartbeatTime >= 2000)) {
     lastHeartbeatTime = now;
     if (ms11Present) {
       // Heartbeat: verify MS11-control is still alive
-      Serial.println("[Main] Heartbeat: pinging MS11-control...");
       if (SlaveController::getInstance().ping()) {
-        Serial.println("[Main] Sending 2ms heartbeat pulse...");
         if (SlaveController::getInstance().pulseLed(2)) {
           ledPulseStartTime = millis();
           ledPulseDurationMs = 2;
           ledPulseActive = true;
-        } else {
-          Serial.println("[Main] ERROR: Heartbeat pulse failed!");
         }
       } else {
         // Lost contact — start blinking "Connection lost!"
-        Serial.println("[Main] ERROR: Lost contact with MS11-control!");
+        Serial.println("[Main] Lost contact with MS11-control!");
         ms11Present = false;
         ms11ConnectionLost = true;
         ms11Restored = false;
@@ -525,7 +529,6 @@ void handleDisplayTasks() {
       }
     } else {
       // Reconnect: try to re-establish contact with MS11-control
-      Serial.println("[Main] Reconnect: trying MS11-control...");
       if (SlaveController::getInstance().ping()) {
         Serial.println("[Main] MS11-control reconnected!");
         ms11Present = true;
@@ -561,12 +564,14 @@ void handleDisplayTasks() {
     ms11Restored = false;
     if (LCDManager::getInstance().isInitialized()) {
       LCDManager::getInstance().clear();
-      LCDManager::getInstance().printLine(0, "Ready.");
+      // Blinking period after Ready: visible first 600ms of each second
+      bool periodVisible = blinkState(now, 600, 400);
+      LCDManager::getInstance().printLine(0, periodVisible ? "Ready." : "Ready ");
       LCDManager::getInstance().printLine(1, "");
     }
   }
   
-  // ---- LCD time display: synced to real seconds, colon 600ms on / 400ms off ----
+  // ---- LCD time display: colon always visible, blinking period in Ready instead ----
   // Only show clock when MS11-control is connected (ms11Present) and not during "Restored" message
   if (ipDisplayCleared && lcdStatusShown && ms11Present && !ms11Restored && LCDManager::getInstance().isInitialized() && Settings::stringToBool(ntpEnabled)) {
     time_t rawTime = time(nullptr);
@@ -577,12 +582,11 @@ void handleDisplayTasks() {
       struct tm timeinfo;
       gmtime_r(&localTime, &timeinfo);
       
-      // Colon blink synced to seconds: visible first 600ms of each second
-      bool colonVisible = blinkState(now, 600, 400);
+      // Colon always visible (period in Ready blinks instead)
       char timeStr[17];
-      snprintf(timeStr, sizeof(timeStr), "%02d-%02d-%04d %02d%c%02d",
+      snprintf(timeStr, sizeof(timeStr), "%02d-%02d-%04d %02d:%02d",
                timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
-               timeinfo.tm_hour, colonVisible ? ':' : ' ', timeinfo.tm_min);
+               timeinfo.tm_hour, timeinfo.tm_min);
       
       // Only update LCD when string actually changed
       static char lastTimeStr[17] = "";
@@ -675,8 +679,13 @@ void handleNeopixelTasks() {
   }
 
   // Button press: 3x white blink, ignore early boot noise
-  if (!blinkActive && now > 5000 && SeesawRotary::getInstance().getButtonPress()) {
-    startBlink(0xFFFFFF, statusColor, 6, 100);
+  // Throttle button reads to every 50ms (I2C read is ~2-5ms)
+  static unsigned long lastButtonCheck = 0;
+  if (!blinkActive && now > 5000 && (now - lastButtonCheck >= 50)) {
+    lastButtonCheck = now;
+    if (SeesawRotary::getInstance().getButtonPress()) {
+      startBlink(0xFFFFFF, statusColor, 6, 100);
+    }
   }
 
   // Handle blink animation
@@ -698,13 +707,17 @@ void handleNeopixelTasks() {
     return;  // Exit immediately after restoration
   }
 
-  // AP mode: blue blink
+  // AP mode: blue blink (throttled to prevent excessive I2C writes)
   if (isAPMode) {
     bool apOn = ((now / 500) % 2) == 0;
-    if (apOn) {
-      setColorIfChanged(0x0000FF);
-    } else {
-      SeesawRotary::getInstance().neoPixelOff();
+    static bool lastApOn = true;
+    if (apOn != lastApOn) {
+      lastApOn = apOn;
+      if (apOn) {
+        setColorIfChanged(0x0000FF);
+      } else {
+        setColorIfChanged(0x000000);
+      }
     }
     return;
   }
@@ -721,6 +734,15 @@ void handleNeopixelTasks() {
 // ============================================================================
 
 void loop() {
+  // ---- LED pulse check FIRST for accurate pulse timing ----
+  if (ledPulseActive) {
+    unsigned long elapsed = millis() - ledPulseStartTime;
+    if (elapsed >= ledPulseDurationMs) {
+      SlaveController::getInstance().setLed(false);
+      ledPulseActive = false;
+    }
+  }
+
   // Update GPIO states (buttons, switch, LED animations)
   GPIOManager::getInstance().update();
   
@@ -729,7 +751,7 @@ void loop() {
   handleNetworkTasks();
   handleNeopixelTasks();  // Update NeoPixel status indicator
   
-  // Small delay to prevent excessive CPU usage
+  // Small yield to prevent excessive CPU usage
   delay(LOOP_DELAY);
 }
 

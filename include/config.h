@@ -33,8 +33,8 @@
 // FIRMWARE VERSION TRACKING
 // ============================================================================
 // Format: type-year-major.minor.patch
-#define FIRMWARE_VERSION "fw-2026.2.12.02"
-#define FILESYSTEM_VERSION "fs-2026.2.12.02"
+#define FIRMWARE_VERSION "fw-2026.2.12.03"
+#define FILESYSTEM_VERSION "fs-2026.2.12.03"
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
 
@@ -76,6 +76,9 @@
 #define SLAVE_I2C_BUS 1     // Uses Bus 1 (Wire1/I2C1 - GPIO5/6)
 #define SLAVE_SDA_PIN 5     // GPIO5 on XIAO S3 (D4) - Bus 1 (Wire1 SDA)
 #define SLAVE_SCL_PIN 6     // GPIO6 on XIAO S3 (D5) - Bus 1 (Wire1 SCL)
+
+// Temperature Probe Manager
+#define PROBE_MANAGER_ENABLED 1     // Enable probe manager for temperature readings
 
 // ============================================================================
 // GPIO CONFIGURATION - XIAO ESP32-S3 Digital I/O
@@ -281,5 +284,18 @@
 #define NTP_DAYLIGHT_OFFSET_SEC 0
 #define NTP_SYNC_TIMEOUT 5000
 #define NTP_VALID_TIME 1700000000UL
+
+// ============================================================================
+// PROBE CALIBRATION DEFAULTS
+// ============================================================================
+// Default calibration for each probe type (offset, scale)
+// Formula: temp_actual = (temp_raw * scale) + offset
+// Modify these before first boot or via probe_cal.txt after boot
+
+#define PROBE_CAL_ADS1110_OFFSET 0.0f     // °C offset for ADS1110
+
+#define PROBE_CAL_AHT10_OFFSET 0.0f       // °C offset for AHT10
+
+#define PROBE_CAL_MS11_OFFSET 0.0f        // °C offset for MS11-control temp
 
 #endif // CONFIG_H

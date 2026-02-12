@@ -209,7 +209,6 @@ bool SlaveController::runSelfTest() {
 
 bool SlaveController::setLed(bool on) {
   uint8_t value = on ? 1 : 0;
-  Serial.printf("[SlaveController] Setting LED to %s (reg 0x%02X = %d)\n", on ? "ON" : "OFF", SLAVE_REG_LED_ONOFF, value);
   if (!I2CManager::getInstance().writeRegister(SLAVE_I2C_ADDR, SLAVE_REG_LED_ONOFF, value)) {
     lastError = "Failed to set LED";
     stats.failedWrites++;
@@ -217,13 +216,11 @@ bool SlaveController::setLed(bool on) {
     return false;
   }
   stats.successfulWrites++;
-  Serial.println("[SlaveController] ✓ LED set successfully");
   return true;
 }
 
 bool SlaveController::pulseLed(uint16_t durationMs) {
   // Initiate LED pulse - main loop handles the timing
-  Serial.printf("[SlaveController] Pulsing LED for %d ms (starting now)\n", durationMs);
   if (!setLed(true)) {
     return false;
   }

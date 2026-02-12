@@ -711,7 +711,7 @@ static void registerI2CApiRoutes(AsyncWebServer& server) {
         else if (address == 0x38) deviceName = "AHT10 Temperature & Humidity Sensor";
         else if (address == 0x76 || address == 0x77) deviceName = "BMP280/BME280 Sensor";
         else if (address == 0x68) deviceName = "MPU6050/DS3231 RTC";
-        else if (address == 0x48) deviceName = "ADS1115 ADC";
+        else if (address == 0x48) deviceName = "ADS1110 ADC";
         else if (address == 0x20) deviceName = "PCF8574 I/O Expander";
         
         device["name"] = deviceName;

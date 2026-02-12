@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.12.03] - 2026-02-12
+
+### Changed
+- **Main Loop Optimization**: Eliminated blocking operations for smoother heartbeat and LCD blink
+  - LED pulse check moved to top of `loop()` for accurate 2ms pulse timing
+  - OLED display only redraws when sensor data actually changes (saves ~10-15ms per cycle)
+  - Seesaw button reads throttled to 50ms intervals (was every 1ms loop)
+  - NeoPixel AP-mode blink uses change detection instead of unconditional I2C writes
+  - Removed excessive Serial debug output from heartbeat path (~6 println per 2s cycle)
+- **Probe Manager**: New consolidated temperature measurement system
+  - Multi-probe support: ADS1110 ADC, AHT10, MS11-control slave temperature
+  - Per-probe calibration with NVS persistence and LittleFS sync (probe_cal.txt)
+  - Configurable calibration defaults in config.h (PROBE_CAL_*_OFFSET)
+- **Partition Table**: Expanded to use full 8MB flash
+  - app0/app1: 3MB each (was 1.875MB), littlefs: 1.9MB (was 512KB)
+
+### Fixed
+- **Heartbeat LED jitter**: 2ms pulse was stretched to 20-200ms+ due to blocking I2C and Serial operations between pulse-on and pulse-off check
+- **LCD blink irregularity**: Variable loop times (5ms-200ms) caused visible stuttering in 600/400ms blink pattern
+
 ## [2026.2.12.02] - 2026-02-12
 
 ### Changed
