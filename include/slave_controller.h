@@ -22,7 +22,7 @@
 #define REG_PROTOCOL_VER     0x09  // uint8_t (0x02 = v2)
 #define REG_DEBUG_MODE       0x0A  // uint8_t (0/1)
 #define REG_FAN_PERCENT      0x0B  // uint8_t (0-100)
-#define REG_LAST_ACK         0x0C  // uint8_t (0=fail, 1=success)
+#define REG_GET_VERSION_FULL 0x0C  // 4 bytes: major(16) minor(8) patch+build(8)
 #define REG_MIN_MASTER_VER   0x0D  // uint8_t (0x10 = v1.0)
 #define REG_DISPLAY_ENABLED  0x0E  // uint8_t (0/1)
 
@@ -56,6 +56,20 @@
 #define STATUS_AUGER_BIT     0x02
 #define STATUS_ERROR_MASK    0xF0
 #define STATUS_ERROR_SHIFT   4
+
+// Slave firmware version (full 4-byte format: YYYY.M.m.pp)
+struct SlaveVersion {
+  uint16_t major;   // Year (e.g., 2026)
+  uint8_t minor;    // Minor version
+  uint8_t patch;    // Patch version (high nibble of byte 4)
+  uint8_t build;    // Build version (low nibble of byte 4)
+  bool valid;       // True if version was read successfully
+  
+  String toString() const {
+    if (!valid) return "unknown";
+    return String(major) + "." + String(minor) + "." + String(patch) + "." + (build < 10 ? "0" : "") + String(build);
+  }
+};
 
 class SlaveController {
 public:
@@ -123,6 +137,12 @@ public:
   // Get protocol version (should be 0x02)
   uint8_t getProtocolVersion();
   
+  // Read full firmware version (4-byte format: YYYY.M.m.pp)
+  bool readFullVersion(SlaveVersion& version);
+  
+  // Get cached full version string
+  String getFullVersionString();
+  
   // Quick ping (connection test)
   bool ping();
   
@@ -167,6 +187,7 @@ private:
   uint8_t lastStatus = 0;
   uint8_t lastFwVersion = 0;
   uint8_t lastProtoVersion = 0;
+  SlaveVersion cachedFullVersion = {0, 0, 0, 0, false};
   uint8_t lastFanPercent = 0;
   bool lastIgniterState = false;
   bool lastAugerState = false;

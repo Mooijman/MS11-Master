@@ -29,6 +29,7 @@ extern MD11SlaveUpdate* md11SlaveUpdater;
 
 // Application mode flags
 extern bool isAPMode;
+extern bool ms11Present;
 
 // Scheduled reboot state
 extern bool rebootScheduled;

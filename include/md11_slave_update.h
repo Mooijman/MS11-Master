@@ -11,8 +11,9 @@
 // Application I2C address (activates bootloader)
 #define APP_I2C_ADDR 0x30
 
-// I2C Command to enter bootloader mode
-#define APP_BOOTLOADER_COMMAND 0x42  // ASCII 'B'
+// I2C register and command to enter bootloader mode (matches test_i2c_slave.cpp protocol)
+#define APP_BOOTLOADER_REGISTER 0x99  // Bootloader activation register
+#define APP_BOOTLOADER_MAGIC 0xB0     // Safety magic byte
 
 // Twiboot commands (from bootloader protocol)
 enum TwiBootCommand {

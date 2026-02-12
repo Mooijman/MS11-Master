@@ -162,6 +162,42 @@ uint8_t SlaveController::getProtocolVersion() {
   return lastProtoVersion;
 }
 
+bool SlaveController::readFullVersion(SlaveVersion& version) {
+  // Read 4 bytes from REG_GET_VERSION_FULL (0x0C)
+  // Byte 0-1: majorVersion (uint16_t, little-endian)
+  // Byte 2:   minorVersion (uint8_t)
+  // Byte 3:   patchAndBuild (high nibble = patch, low nibble = build)
+  uint8_t buffer[4] = {0};
+  
+  if (!I2CManager::getInstance().readRegisterMulti(SLAVE_I2C_ADDR, REG_GET_VERSION_FULL, buffer, 4)) {
+    lastError = "Failed to read full version from slave";
+    Serial.println("[SlaveController] ERROR: " + lastError);
+    version.valid = false;
+    return false;
+  }
+  
+  version.major = buffer[0] | (buffer[1] << 8);  // Little-endian uint16_t
+  version.minor = buffer[2];
+  version.patch = (buffer[3] >> 4) & 0x0F;
+  version.build = buffer[3] & 0x0F;
+  version.valid = true;
+  
+  cachedFullVersion = version;
+  
+  Serial.printf("[SlaveController] Full version: %s\n", version.toString().c_str());
+  return true;
+}
+
+String SlaveController::getFullVersionString() {
+  if (!cachedFullVersion.valid) {
+    SlaveVersion ver;
+    if (!readFullVersion(ver)) {
+      return "unknown";
+    }
+  }
+  return cachedFullVersion.toString();
+}
+
 bool SlaveController::ping() {
   return I2CManager::getInstance().ping(SLAVE_I2C_ADDR, I2C_BUS_SLAVE);
 }

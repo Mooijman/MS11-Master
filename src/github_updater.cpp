@@ -1,6 +1,7 @@
 #include "github_updater.h"
 #include "config.h"
 #include "settings.h"
+#include "app_state.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>

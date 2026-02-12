@@ -13,9 +13,12 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
   
   I2CManager& manager = I2CManager::getInstance();
   
-  // Use slave bus (Wire1, GPIO5/6) for the slave controller
-  uint8_t cmd = APP_BOOTLOADER_COMMAND;  // 0x42 ('B')
-  if (!manager.write(APP_I2C_ADDR, &cmd, 1)) {
+  // Use raw write (same as LED control path) - sends {register, magic} as two bytes
+  Serial.printf("[MD11SlaveUpdate] Sending bootloader command: REG=0x%02X, MAGIC=0x%02X\n", 
+                APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC);
+  
+  uint8_t bootCmd[2] = {APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC};
+  if (!manager.write(APP_I2C_ADDR, bootCmd, 2)) {
     lastError = "Failed to send bootloader command to app (0x" + String(APP_I2C_ADDR, HEX) + ")";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
     return false;
