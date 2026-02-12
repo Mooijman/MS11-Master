@@ -3,9 +3,9 @@
 XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA pull updates, LittleFS storage, OLED display en web interface.
 
 **Status**: ✅ Geoptimaliseerd voor **XIAO ESP32-S3** (compact board, 8MB flash)  
-**Current Version**: `2026.1.1.08` (GPIO Viewer button alignment fix)  
-**Firmware Size**: 1.33MB (67.8% of OTA partition)  
-**Last Updated**: 6 februari 2026
+**Current Version**: `2026.2.12.02` (LCD display improvements - startup blink, connection monitoring)  
+**Firmware Size**: 1.35MB (68.6% of OTA partition)  
+**Last Updated**: 12 februari 2026
 
 ## Migration Notes (ESP32-WROOM → ESP32-S3)
 
@@ -33,6 +33,9 @@ XIAO ESP32-S3 baseline project met WiFi configuration manager, GitHub-based OTA 
 - **Web-based update interface** met status tracking
 - **GPIO Viewer** optioneel beschikbaar voor debugging
 - **OLED display** support (SSD1306)
+- **LCD 16x2 display** met I2C PCF8574 backpack voor status weergave
+- **MS11-control monitoring** met heartbeat en reconnect (2s interval)
+- **Visual feedback** voor connection lost/restored met knipperende meldingen
 - **Settings page** voor configuratie via web interface
 
 ## Hardware
@@ -263,6 +266,32 @@ Configuratie wordt opgeslagen in LittleFS met atomic writes:
 - **Beveiliging**: Open (geen wachtwoord)
 - **DNS**: Captive portal actief
 
+## LCD Display States (16x2)
+
+Het LCD display toont verschillende statussen tijdens de levenscyclus van het systeem:
+
+### Opstartsequentie
+1. **Boot** - `*MagicSmoker 11*` / `Starting up...` (knippert 600ms/400ms)
+2. **WiFi OK** - `WiFi Enabled` / `<IP-adres>` (3 seconden)
+3. **WiFi FAIL** - `WiFi manager` / `ESP-WIFI-MANAGER` (AP mode)
+4. **MS11 Detectie** - `MS11-control` / `Detected` of `Absent` (2 seconden)
+5. **Ready** - `Ready.` / `<leeg>` (tot NTP tijd beschikbaar)
+
+### Normaal Bedrijf
+- **Tijd Weergave** - `Ready.` / `DD-MM-YYYY HH:MM` (dubbelpunt knippert 600ms/400ms)
+  - Alleen zichtbaar wanneer NTP ingeschakeld EN MS11-control verbonden
+  - Stopt automatisch bij verbindingsverlies
+
+### MS11-Control Monitoring
+- **Heartbeat**: Elke 2 seconden ping naar MS11-control met 2ms LED pulse
+- **Connection Lost**: `MS11-Control` / `Connection lost!` (knipperend 600ms/400ms)
+  - Tijd display stopt automatisch
+  - Reconnect pogingen elke 2 seconden
+  
+- **Connection Restored**: `MS11-Control` / `Restored` (3 seconden)
+  - Daarna automatisch terug naar `Ready.` + tijd display
+  - 500ms LED pulse als bevestiging
+
 ## GPIO Viewer
 
 Optionele debugging tool:
@@ -308,6 +337,21 @@ In platformio.ini:
 - LittleFS atomic writes voorkomen corruptie
 
 ## Recent Updates (February 2026)
+
+### v2026.2.12.02 - LCD Display Improvements
+- Startup blink now properly functions during setup sequence
+- MS11-control reconnect interval reduced from 4s to 2s
+- "Connection lost!" blinks when MS11-control disconnects
+- "Restored" message displays for 3 seconds on reconnection
+- Time display automatically stops when connection lost
+- Enhanced visual feedback for connection status
+
+### v2026.2.12.01 - LCD Display States & MS11-control Monitoring
+- Comprehensive startup display sequence with blinking "Starting up..."
+- MS11-control detection with LED pulse signaling (500ms on detection, 2ms heartbeat)
+- Time display with blinking colon synchronized to system clock
+- Non-blocking display architecture removing all delay() calls
+- LED pulse state machine for smooth multitasking
 
 ### v2026.1.1.08 - GPIO Viewer Button Alignment Fix
 - GPIO Viewer "Open" button aligned with other action buttons

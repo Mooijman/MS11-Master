@@ -1,8 +1,9 @@
 # LCD & Seesaw Rotary Encoder Integration Summary
 
-**Date**: February 8, 2026  
-**Status**: ✅ COMPILATION SUCCESSFUL  
-**Build**: ESP32-S3 | RAM: 15.8% (51.9KB) | Flash: 68.6% (1.35MB)
+**Date**: February 12, 2026  
+**Status**: ✅ PRODUCTION READY - LCD Display States Implemented  
+**Build**: ESP32-S3 | RAM: 15.8% (51.7KB) | Flash: 68.6% (1.35MB)  
+**Current Version**: 2026.2.12.02
 
 ---
 
@@ -107,6 +108,139 @@ if (SeesawRotary::getInstance().getButtonPress()) {
 
 // Show on LCD
 LCDManager::getInstance().printLine(1, "Pos: " + String(pos));
+```
+
+---
+
+## LCD Display States (Production Implementation)
+
+### Startup Sequence with Blinking
+
+The LCD implements a sophisticated non-blocking display sequence during boot:
+
+```
+┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+│*MagicSmoker 11*│ ──▶ │WiFi Enabled    │ ──▶ │MS11-control    │
+│Starting up...  │     │192.168.1.100   │     │Detected        │
+└────────────────┘     └────────────────┘     └────────────────┘
+  Blinks 600/400ms        3 seconds              2 seconds
+  
+     ↓
+┌────────────────┐
+│Ready.          │
+│12-02-2026 14:30│  ← Time display with blinking colon (600ms/400ms)
+└────────────────┘
+```
+
+### State Machine Implementation
+
+**1. Boot Phase** (0-7 seconds)
+- Line 0: `*MagicSmoker 11*` (static)
+- Line 1: `Starting up...` (blinks using `delayWithBlink()` helper)
+- **Implementation**: Non-blocking blink during OLED animation delays
+- **Pattern**: 600ms ON / 400ms OFF
+
+**2. WiFi Connection** (3 seconds)
+- Line 0: `WiFi Enabled` or `WiFi manager`
+- Line 1: IP address or `ESP-WIFI-MANAGER`
+- **Trigger**: WiFi STA success/fail
+
+**3. MS11-control Detection** (2 seconds)
+- Line 0: `MS11-control`
+- Line 1: `Detected` or `Absent`
+- **LED Pulse**: 500ms on successful detection
+
+**4. Ready State** (continuous)
+- Line 0: `Ready.` (static)
+- Line 1: `DD-MM-YYYY HH:MM` (colon blinks)
+- **Condition**: NTP enabled + MS11-control connected
+
+### MS11-control Monitoring (v2026.2.12.02)
+
+**Heartbeat**: 2-second interval
+```cpp
+// Every 2 seconds
+if (ms11Present) {
+  ping() → success: 2ms LED pulse
+  ping() → fail: show "Connection lost!"
+} else {
+  ping() → success: show "Restored", 500ms LED pulse
+}
+```
+
+**Connection Lost State**
+```
+┌────────────────┐
+│MS11-Control    │
+│Connection lost!│  ← Blinks 600ms/400ms
+└────────────────┘
+```
+- Time display automatically stops
+- Reconnect attempts every 2 seconds
+- Replaces previous static "Absent" message
+
+**Connection Restored State**
+```
+┌────────────────┐
+│MS11-Control    │
+│Restored        │  ← 3 seconds static
+└────────────────┘
+   ↓ (after 3s)
+┌────────────────┐
+│Ready.          │
+│12-02-2026 14:30│  ← Resume normal operation
+└────────────────┘
+```
+- 500ms LED pulse confirmation
+- 3-second non-blocking display (clock blocked)
+- Auto-return to Ready + time display
+
+### Key Functions
+
+**delayWithBlink()** - Setup-phase blinking
+```cpp
+void delayWithBlink(unsigned long ms) {
+  unsigned long start = millis();
+  bool lastVisible = true;
+  while (millis() - start < ms) {
+    if (!startupBlinkDone && LCDManager::getInstance().isInitialized()) {
+      bool visible = blinkState(millis(), 600, 400);
+      if (visible != lastVisible) {
+        lastVisible = visible;
+        LCDManager::getInstance().printLine(1, visible ? "Starting up..." : "");
+      }
+    }
+    delay(10);  // Small yield to avoid WDT
+  }
+}
+```
+
+**blinkState()** - Universal asymmetric blink
+```cpp
+bool blinkState(unsigned long currentMillis, unsigned long onMs, unsigned long offMs) {
+  unsigned long cycle = onMs + offMs;
+  return (currentMillis % cycle) < onMs;
+}
+```
+
+### State Variables
+
+```cpp
+// Startup blink tracking
+bool startupBlinkDone = false;
+bool lastStartupBlinkVisible = true;
+
+// MS11 connection tracking
+bool ms11Present = false;
+bool ms11ConnectionLost = false;
+bool lastConnectionLostBlink = true;
+
+// Restoration tracking
+bool ms11Restored = false;
+unsigned long ms11RestoredTime = 0;
+
+// Heartbeat interval
+unsigned long lastHeartbeatTime = 0;  // 2-second cycle
 ```
 
 ---

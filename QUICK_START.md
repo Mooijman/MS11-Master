@@ -1,15 +1,15 @@
 # Quick Reference Guide - MS11-Master Project
 
-**Last Updated**: 6 February 2026 | **Version**: 2026.1.1.08
+**Last Updated**: 12 February 2026 | **Version**: 2026.2.12.02
 
 ## 📱 Project at a Glance
 
-MS11-Master: ESP32-S3 IoT controller with WiFi manager, OTA updates, web interface, NTP time sync, and timezone support.
+MS11-Master: ESP32-S3 IoT controller with WiFi manager, OTA updates, web interface, NTP time sync, timezone support, and LCD 16x2 display with MS11-control monitoring.
 
 - **Board**: XIAO ESP32-S3 (8MB flash, 320KB RAM)
 - **Status**: ✅ Production ready
-- **Latest Version**: 2026.1.1.08 (GPIO Viewer button alignment fix)
-- **Firmware Size**: 1.33MB (67.8% of OTA partition)
+- **Latest Version**: 2026.2.12.02 (LCD display improvements - startup blink, connection monitoring)
+- **Firmware Size**: 1.35MB (68.6% of OTA partition)
 
 ## 🚀 Quick Start
 

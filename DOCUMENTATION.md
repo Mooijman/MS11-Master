@@ -1,7 +1,7 @@
 # 📋 Documentation Index - MS11-Master Project
 
-**Project Version**: 2026.1.1.08  
-**Last Updated**: 6 February 2026  
+**Project Version**: 2026.2.12.02  
+**Last Updated**: 12 February 2026  
 **Status**: ✅ Complete & Ready for Deployment
 
 ---
@@ -83,6 +83,8 @@
 
 ### 📊 Release & Testing
 - **[CHANGELOG.md](CHANGELOG.md)** - Release history
+  - v2026.2.12.02 - LCD display improvements (startup blink, connection lost handling)
+  - v2026.2.12.01 - LCD display states & MS11-control monitoring
   - v2026.1.1.08 - GPIO Viewer button alignment fix
   - v2026.1.1.07 - Settings UI polish
   - v2026.1.1.05 - Timezone selection

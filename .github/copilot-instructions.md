@@ -20,6 +20,15 @@
 - **Wire instantiation**: `TwoWire Wire0(0)` and `TwoWire Wire1(1)` in i2c_manager.cpp. Never use global `Wire` directly.
 - **Manager hierarchy**: I2CManager initializes both buses → DisplayManager/LCDManager/SeesawRotary use Bus 1 → SlaveController uses Bus 0.
 
+## LCD Display States (16x2)
+- **Startup sequence**: `*MagicSmoker 11*` + `Starting up...` (blinks 600/400ms via `delayWithBlink()`) → `WiFi Enabled` + IP (3s) → `MS11-control` + `Detected`/`Absent` (2s) → `Ready.` + time display
+- **Normal operation**: Line 0 = `Ready.`, Line 1 = `DD-MM-YYYY HH:MM` (colon blinks 600/400ms). Only shows when NTP enabled AND MS11-control connected.
+- **Connection lost**: `MS11-Control` + `Connection lost!` (blinks 600/400ms). Time display stops. Reconnect attempts every 2s.
+- **Connection restored**: `MS11-Control` + `Restored` (3s static, clock blocked) → auto-return to `Ready.` + time. 500ms LED pulse confirmation.
+- **MS11 heartbeat**: 2s interval. Present: ping + 2ms LED pulse. Absent: ping for reconnect.
+- **Key functions**: `delayWithBlink(ms)` for setup-phase blink, `blinkState(millis, onMs, offMs)` for asymmetric patterns.
+- **State variables**: `startupBlinkDone`, `ms11Present`, `ms11ConnectionLost`, `ms11Restored`, `ms11RestoredTime`, `lastHeartbeatTime`.
+
 ## Project-specific conventions
 - String flags are stored as `"true"/"false"` or `"on"/"off"`; always normalize before comparisons (see DHCP handling in [src/main.cpp](../src/main.cpp)).
 - Versioning has no `v` prefix. Binaries: `fw-YYYY.M.m.p.bin` and `fs-YYYY.M.m.p.bin`. Tags: `YYYY.M.m.p`.
