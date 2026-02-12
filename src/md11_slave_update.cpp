@@ -7,13 +7,13 @@ MD11SlaveUpdate::MD11SlaveUpdate() {
 
 bool MD11SlaveUpdate::requestBootloaderMode() {
   // Send bootloader activation command to app at 0x30
-  // This tells app to set EEPROM flag and reboot
+  // This tells app to set EEPROM flag and reboot via watchdog
   
   Serial.println("[MD11SlaveUpdate] Requesting bootloader mode via I2C Bus 1 (Slave Bus)...");
   
   I2CManager& manager = I2CManager::getInstance();
   
-  // First, verify app is responding
+  // Verify app is responding
   if (!manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE)) {
     lastError = "Target app at 0x30 not responding before bootloader command";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
@@ -21,68 +21,53 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
   }
   Serial.println("[MD11SlaveUpdate] ✓ Target app at 0x30 is responding");
   
-  // Send bootloader activation command multiple times for reliability
-  uint8_t bootCmd[2] = {APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC};
+  // Send bootloader activation: register 0x99 with magic byte 0xB0
+  // Uses writeRegister() which goes directly via slave bus (Wire1)
+  Serial.printf("[MD11SlaveUpdate] Sending bootloader command: REG=0x%02X, MAGIC=0x%02X\n",
+                APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC);
   
-  for (int attempt = 1; attempt <= 3; attempt++) {
-    Serial.printf("[MD11SlaveUpdate] Sending bootloader command (attempt %d/3): REG=0x%02X, MAGIC=0x%02X\n",
-                  attempt, APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC);
-    
-    if (manager.write(APP_I2C_ADDR, bootCmd, 2)) {
-      Serial.println("[MD11SlaveUpdate] ✓ Bootloader command sent successfully");
+  if (!manager.writeRegister(APP_I2C_ADDR, APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC)) {
+    lastError = "Failed to send bootloader command to app";
+    Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
+    return false;
+  }
+  Serial.println("[MD11SlaveUpdate] ✓ Bootloader command sent successfully");
+  
+  // Wait for app to reboot and bootloader to start
+  // DO NOT ping or send any I2C traffic during this time!
+  // The Arduino needs uninterrupted time to: process command → write EEPROM → watchdog reset → bootloader starts
+  Serial.println("[MD11SlaveUpdate] Waiting 8 seconds for reboot + bootloader startup...");
+  Serial.println("[MD11SlaveUpdate] (No I2C traffic during this time)");
+  delay(8000);
+  
+  // Now check if bootloader is available
+  Serial.println("[MD11SlaveUpdate] Checking if bootloader at 0x14 is responding...");
+  bool bootloaderFound = false;
+  for (int attempt = 1; attempt <= 5; attempt++) {
+    if (manager.ping(TWIBOOT_I2C_ADDR, I2C_BUS_SLAVE)) {
+      Serial.printf("[MD11SlaveUpdate] ✓ Bootloader at 0x14 detected (attempt %d)\n", attempt);
+      bootloaderFound = true;
       break;
     }
-    
-    if (attempt < 3) {
-      Serial.println("[MD11SlaveUpdate] Retrying...");
-      delay(100);
-    } else {
-      lastError = "Failed to send bootloader command to app (0x" + String(APP_I2C_ADDR, HEX) + ") after 3 attempts";
-      Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
-      return false;
-    }
+    Serial.printf("[MD11SlaveUpdate] Bootloader ping attempt %d/5 failed\n", attempt);
+    delay(500);
   }
   
-  Serial.println("[MD11SlaveUpdate] Waiting for app to reboot...");
-  
-  // Short delay, then check if 0x30 stopped responding (= reboot happened)
-  delay(1000);
-  bool appStillAlive = manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE);
-  Serial.printf("[MD11SlaveUpdate] After 1s: app at 0x30 %s\n", 
-                appStillAlive ? "STILL RESPONDING (reboot may not have happened!)" : "GONE (reboot happened ✓)");
-  
-  if (appStillAlive) {
-    Serial.println("[MD11SlaveUpdate] WARNING: App at 0x30 still responding. Bootloader entry may have been ignored.");
-    Serial.println("[MD11SlaveUpdate] Trying writeRegister method instead...");
-    
-    // Try using writeRegister() directly - with built-in retries
-    if (!manager.writeRegister(APP_I2C_ADDR, APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC)) {
-      Serial.println("[MD11SlaveUpdate] writeRegister also failed");
-    } else {
-      Serial.println("[MD11SlaveUpdate] writeRegister sent, waiting...");
-    }
-    delay(1000);
-    appStillAlive = manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE);
-    Serial.printf("[MD11SlaveUpdate] After retry: app at 0x30 %s\n",
-                  appStillAlive ? "STILL RESPONDING" : "GONE ✓");
+  if (!bootloaderFound) {
+    // Check if app is still at 0x30 (didn't reboot)
+    bool appStillThere = manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE);
+    Serial.printf("[MD11SlaveUpdate] App at 0x30: %s\n", appStillThere ? "STILL RESPONDING (reboot failed)" : "gone");
+    lastError = appStillThere 
+      ? "App at 0x30 did not reboot - bootloader command was ignored by firmware"
+      : "App rebooted but bootloader at 0x14 not detected";
+    Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
+    return false;
   }
   
-  // Wait for bootloader to fully start (~5s startup delay for Twiboot)
-  Serial.println("[MD11SlaveUpdate] Waiting for bootloader to initialize (5 seconds)...");
-  delay(5000);
-  
-  // Try to ping bootloader first
-  Serial.println("[MD11SlaveUpdate] Checking if bootloader at 0x14 is responding...");
-  if (manager.ping(TWIBOOT_I2C_ADDR, I2C_BUS_SLAVE)) {
-    Serial.println("[MD11SlaveUpdate] ✓ Bootloader detected at 0x14!");
-  } else {
-    Serial.println("[MD11SlaveUpdate] WARNING: Bootloader not responding at 0x14, will attempt version query anyway...");
-  }
-  
-  // Verify bootloader is active by querying version
+  // Verify bootloader by reading version
   String version;
   if (!queryBootloaderVersion(version)) {
-    lastError = "Bootloader did not respond after reboot";
+    lastError = "Bootloader at 0x14 detected but version query failed";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
     return false;
   }
