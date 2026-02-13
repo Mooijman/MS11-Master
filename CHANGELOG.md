@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.13.02] - 2026-02-13
+
+### Added
+- **2ms Heartbeat LED Pulse**: Re-enabled visual feedback on MS11-control
+  - Every 2 seconds, a brief 2ms LED pulse confirms the heartbeat ping is successful
+  - Safe with I2CManager mutex protection (no conflicts with bootloader operations)
+  - Provides immediate visual indication that MS11-control is alive and responding
+
+### Changed
+- **Startup Sequence Optimization**: MS11-control detection moved to early boot
+  - Ping now happens immediately after I2C/SlaveController initialization (before WiFi, before Waacs logo)
+  - 500ms detection LED pulse triggered on successful ping during early startup
+  - Early detection provides faster feedback and better error visibility
+- **Display Improvements**: Cleaner OLED status presentation
+  - MS11-control status now shown on OLED screen (not LCD) together with "MS11 Master" text
+  - Layout: "MS11 Master" → blank line → "MS11-control" → "Detected"/"Absent" (2s display)
+  - LCD remains on "Starting up..." during early boot, then transitions directly to WiFi info
+
+### Removed
+- **LCD MS11 Detection Message**: No longer shows "MS11-control Detected/Absent" on LCD during startup
+  - Simplified LCD startup flow: "Starting up..." → "WiFi Enabled" + IP → "Ready." + clock
+  - MS11-control status only shown on OLED screen
+
 ## [2026.2.13.01] - 2026-02-13
 
 ### Fixed

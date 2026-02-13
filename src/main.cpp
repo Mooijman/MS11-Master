@@ -220,8 +220,19 @@ void setup() {
     Serial.println("WARNING: Probe Manager initialization did not detect any temperature sensors");
   }
   
-  // Update display managers with version info after delays
-  delayWithBlink(2000);
+  // Detect MS11-control early (before WiFi, before Waacs logo)
+  delayWithBlink(500);
+  ms11Present = SlaveController::getInstance().ping();
+  Serial.printf("[Main] MS11-control detection: %s\n", ms11Present ? "PRESENT" : "ABSENT");
+  
+  // Trigger 500ms LED pulse on MS11-control when detected
+  if (ms11Present) {
+    if (SlaveController::getInstance().pulseLed(500)) {
+      ledPulseStartTime = millis();
+      ledPulseDurationMs = 500;
+      ledPulseActive = true;
+    }
+  }
 
   // Show Waacs logo on display
   Serial.println("Displaying Waacs logo...");
@@ -235,13 +246,17 @@ void setup() {
   Serial.println("Waacs logo displayed");
   delayWithBlink(3000);
   
-  // Clear and show MS11 Master text
+  // Clear and show MS11 Master text + MS11-control status
   DisplayManager::getInstance().clear();
   delayWithBlink(100);
-  Serial.println("Displaying MS11 Master text...");
+  Serial.println("Displaying MS11 Master + MS11-control status...");
   DisplayManager::getInstance().setFont(ArialMT_Plain_10);
-  DisplayManager::getInstance().drawStringCenter(28, "MS11 Master");
+  DisplayManager::getInstance().drawString(0, 0, "MS11 Master");
+  // Line 1 blank
+  DisplayManager::getInstance().drawString(0, 28, "MS11-control");
+  DisplayManager::getInstance().drawString(0, 42, ms11Present ? "Detected" : "Absent");
   DisplayManager::getInstance().updateDisplay();
+  startupBlinkDone = true;  // Stop startup blink
   delayWithBlink(2000);
   DisplayManager::getInstance().clear();
   DisplayManager::getInstance().updateDisplay();
@@ -325,11 +340,9 @@ void setup() {
     ipDisplayShown = true;
     ipDisplayCleared = false;
     
-    // Check for MS11-control on I2C bus (detection LED pulse will be triggered in loop)
+    // MS11-control already detected in early setup, set flags for LCD display
     ms11DetectionTime = millis();
-    ms11DetectionShown = false;
-    ms11Present = SlaveController::getInstance().ping();
-    Serial.printf("[Main] MS11-control detection: %s\n", ms11Present ? "PRESENT" : "ABSENT");
+    ms11DetectionShown = true;  // Already shown during early startup
 
     // Sync time if enabled
     syncTimeIfEnabled(true);  // true = boot sync, saves boot time
@@ -459,25 +472,8 @@ void handleDisplayTasks() {
     DisplayManager::getInstance().clear();
     DisplayManager::getInstance().updateDisplay();
     
-    // Show MS11-control detection (show for 2 seconds)
-    if (!ms11DetectionShown) {
-      if (LCDManager::getInstance().isInitialized()) {
-        LCDManager::getInstance().clear();
-        LCDManager::getInstance().printLine(0, "MS11-control");
-        LCDManager::getInstance().printLine(1, ms11Present ? "Detected" : "Absent");
-        ms11DetectionShown = true;
-        ms11DetectionTime = millis();  // Reset timer for 2-second display
-        
-        // Trigger 500ms LED pulse on MS11-control when detected
-        if (ms11Present) {
-          if (SlaveController::getInstance().pulseLed(500)) {
-            ledPulseStartTime = millis();
-            ledPulseDurationMs = 500;
-            ledPulseActive = true;
-          }
-        }
-      }
-    } else if (!lcdStatusShown && (millis() - ms11DetectionTime > 2000)) {
+    // MS11-control detection already shown during early startup, transition directly to clock
+    if (!lcdStatusShown) {
       // After MS11 detection message, show ready status
       if (LCDManager::getInstance().isInitialized()) {
         LCDManager::getInstance().clear();
@@ -508,7 +504,7 @@ void handleDisplayTasks() {
   if (ipDisplayCleared && (now - lastHeartbeatTime >= 2000)) {
     lastHeartbeatTime = now;
     if (ms11Present) {
-      // Heartbeat: verify MS11-control is still alive (no LED pulse to avoid interfering with slave LED modes)
+      // Heartbeat: verify MS11-control is still alive with 2ms LED pulse
       if (!SlaveController::getInstance().ping()) {
         // Lost contact — start blinking "Connection lost!"
         Serial.println("[Main] Lost contact with MS11-control!");
@@ -520,6 +516,13 @@ void handleDisplayTasks() {
           LCDManager::getInstance().clear();
           LCDManager::getInstance().printLine(0, "MS11-Control");
           LCDManager::getInstance().printLine(1, "Connection lost!");
+        }
+      } else {
+        // MS11-control present: send 2ms heartbeat pulse (safe with I2CManager mutex)
+        if (SlaveController::getInstance().pulseLed(2)) {
+          ledPulseStartTime = millis();
+          ledPulseDurationMs = 2;
+          ledPulseActive = true;
         }
       }
     } else {
