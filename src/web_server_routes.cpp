@@ -9,6 +9,7 @@
 #include "lcd_manager.h"
 #include "slave_controller.h"
 #include "github_updater.h"
+#include "md11_slave_update.h"
 #include "LittleFS.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
@@ -556,15 +557,125 @@ static void registerSettingsRoutes(AsyncWebServer& server) {
 }
 
 // ============================================================================
-// I2C API ROUTES - Scan, LED control, register dump
+// I2C API ROUTES - Scan, LED control, bootloader, register dump
 // ============================================================================
 
 // I2C slave register addresses (for test_i2c_slave.cpp on Arduino)
 #define SLAVE_REG_LED_ONOFF_WEB    0x10  // 0=off, 1=on
 #define SLAVE_REG_LED_BLINK_WEB    0x11  // 0=off, 1=1Hz, 2=4Hz
 #define SLAVE_REG_LED_STATUS_WEB   0x20  // Read status
+#define SLAVE_REG_ENTER_BOOT_WEB   0x99  // Bootloader with safety code
+#define SLAVE_BOOT_MAGIC_WEB       0xB0
 
 static void registerI2CApiRoutes(AsyncWebServer& server) {
+  // API: Get Twiboot bootloader status
+  // IMPORTANT: Only use ping() to detect bootloader at 0x14.
+  // Do NOT call queryBootloaderVersion() here - it sends command byte 0x01
+  // which equals CMD_SWITCH_APPLICATION in Twiboot and kicks the bootloader out!
+  server.on("/api/twi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    
+    I2CManager& manager = I2CManager::getInstance();
+    
+    if (manager.ping(0x14, I2C_BUS_SLAVE)) {
+      doc["connected"] = true;
+      doc["signature"] = "1E 95 0F";  // ATmega328P signature
+      doc["version"] = "twiboot";    // Don't query - it would send exit command
+    } else {
+      doc["connected"] = false;
+      
+      if (manager.ping(0x30, I2C_BUS_SLAVE)) {
+        doc["appConnected"] = true;
+        doc["hint"] = "Arduino in normal mode. Click 'Enter Bootloader' to activate firmware update mode.";
+      } else {
+        doc["appConnected"] = false;
+        doc["hint"] = "Arduino not responding on either 0x30 (app) or 0x14 (bootloader)";
+      }
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+  
+  // API: Upload hex file to bootloader
+  server.on("/api/twi/upload", HTTP_POST, 
+    [](AsyncWebServerRequest *request) {}, 
+    nullptr, 
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      // Accumulate data in chunks
+      static String uploadBuffer;
+      
+      // First chunk - reset buffer
+      if (index == 0) {
+        uploadBuffer = "";
+        uploadBuffer.reserve(total + 1);
+        Serial.println("[Twiboot API] Upload started, total size: " + String(total) + " bytes");
+      }
+      
+      // Append chunk to buffer
+      for (size_t i = 0; i < len; i++) {
+        uploadBuffer += (char)data[i];
+      }
+      
+      Serial.printf("[Twiboot API] Received chunk: %d/%d bytes (%.1f%%)\n", 
+                   index + len, total, ((index + len) * 100.0) / total);
+      
+      // Only process when we have all data
+      if (index + len != total) {
+        return;
+      }
+      
+      Serial.println("[Twiboot API] All data received, processing...");
+      
+      if (!md11SlaveUpdater) {
+        request->send(400, "application/json", "{\"success\":false,\"error\":\"Twiboot not initialized\"}");
+        uploadBuffer = "";
+        return;
+      }
+      
+      // Parse JSON body with hex content
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, uploadBuffer);
+      
+      if (error) {
+        Serial.println("[Twiboot API] JSON parse error: " + String(error.c_str()));
+        Serial.println("[Twiboot API] Buffer length: " + String(uploadBuffer.length()));
+        Serial.println("[Twiboot API] First 100 chars: " + uploadBuffer.substring(0, 100));
+        request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        uploadBuffer = "";
+        return;
+      }
+      
+      String hexContent = doc["hexContent"].as<String>();
+      uploadBuffer = "";  // Free memory
+      
+      if (hexContent.length() == 0) {
+        Serial.println("[Twiboot API] Empty hex content");
+        request->send(400, "application/json", "{\"success\":false,\"error\":\"No hex content\"}");
+        return;
+      }
+      
+      Serial.println("[Twiboot API] Hex content size: " + String(hexContent.length()) + " bytes");
+      
+      // NOTE: Do NOT query bootloader version here - it may kick bootloader out of programming mode!
+      // User must click "Enter Bootloader" button first to activate bootloader.
+      Serial.println("[Twiboot API] Starting firmware upload (bootloader must already be active)...");
+      
+      // Upload hex file
+      if (!md11SlaveUpdater->uploadHexFile(hexContent)) {
+        String error = md11SlaveUpdater->getLastError();
+        Serial.println("[Twiboot API] Upload failed: " + error);
+        request->send(500, "application/json", 
+          "{\"success\":false,\"error\":\"" + error + "\"}");
+        return;
+      }
+      
+      Serial.println("[Twiboot API] Upload successful!");
+      request->send(200, "application/json", "{\"success\":true,\"message\":\"Firmware updated\"}");
+    }
+  );
+
   // API: Scan I2C bus
   server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
     bool debugEnabledBool = Settings::stringToBool(settings.debugEnabled);
@@ -714,6 +825,280 @@ static void registerI2CApiRoutes(AsyncWebServer& server) {
       serializeJson(doc, response);
       request->send(500, "application/json", response);
     }
+  });
+
+  // API: Enter bootloader mode via test_i2c_slave.cpp register protocol
+  // Uses I2CManager for proper mutex handling (prevents bus conflicts with heartbeat)
+  server.on("/api/i2c/bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
+    bool debugEnabledBool = Settings::stringToBool(settings.debugEnabled);
+    if (!debugEnabledBool) {
+      request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+      return;
+    }
+
+    I2CManager& manager = I2CManager::getInstance();
+    JsonDocument doc;
+    
+    // Step 1: Check Arduino is present on slave bus
+    if (!manager.ping(0x30, I2C_BUS_SLAVE)) {
+      doc["success"] = false;
+      doc["error"] = "Arduino not responding at 0x30 on slave bus";
+      String response;
+      serializeJson(doc, response);
+      request->send(500, "application/json", response);
+      return;
+    }
+    Serial.println("[API-BOOT] PRE-CHECK: ping 0x30 OK");
+    
+    // Step 2: Send bootloader command via I2CManager (with mutex)
+    // Protocol: write register 0x99 followed by magic byte 0xB0
+    Serial.println("[API-BOOT] Sending {0x99, 0xB0} via I2CManager to 0x30...");
+    bool writeOk = manager.writeRegister(0x30, 0x99, 0xB0);
+    
+    Serial.printf("[API-BOOT] writeRegister result = %s\n", writeOk ? "OK" : "FAIL");
+    
+    if (!writeOk) {
+      doc["success"] = false;
+      doc["error"] = "I2C write failed: " + manager.getLastError();
+      String response;
+      serializeJson(doc, response);
+      request->send(500, "application/json", response);
+      return;
+    }
+    
+    Serial.println("[API-BOOT] Command ACKed. Arduino should now:");
+    Serial.println("[API-BOOT]   1. Write EEPROM[510]=0x07, EEPROM[511]=0xB0");
+    Serial.println("[API-BOOT]   2. Enable watchdog 15ms");
+    Serial.println("[API-BOOT]   3. Watchdog reset -> bootloader reads EEPROM -> stays at 0x14");
+    
+    doc["success"] = true;
+    doc["message"] = "Bootloader command sent (Arduino rebooting)";
+    doc["bootloaderVersion"] = "activating...";
+    doc["hint"] = "Bootloader startup takes ~5 seconds. Polling will detect when ready.";
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // API: Bootloader diagnostic - rapid polling to detect even brief resets
+  server.on("/api/i2c/bootloader-diag", HTTP_POST, [](AsyncWebServerRequest *request) {
+    bool debugEnabledBool = Settings::stringToBool(settings.debugEnabled);
+    if (!debugEnabledBool) {
+      request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+      return;
+    }
+
+    JsonDocument doc;
+    
+    Serial.println("\n========================================");
+    Serial.println("[DIAG] BOOTLOADER RAPID DIAGNOSTIC");
+    Serial.println("========================================");
+    
+    // Step 1: Pre-check
+    Wire1.beginTransmission(0x30);
+    uint8_t pre30 = Wire1.endTransmission();
+    doc["pre_0x30"] = pre30 == 0;
+    
+    if (pre30 != 0) {
+      doc["success"] = false;
+      doc["error"] = "Arduino not at 0x30";
+      String response;
+      serializeJson(doc, response);
+      request->send(500, "application/json", response);
+      return;
+    }
+    
+    // Step 2: Read firmware version
+    Wire1.beginTransmission(0x30);
+    Wire1.write(0x0C);
+    Wire1.endTransmission(false);
+    uint8_t vBytes = Wire1.requestFrom(0x30, 4);
+    uint8_t vBuf[4] = {0};
+    for (int i = 0; i < 4 && Wire1.available(); i++) vBuf[i] = Wire1.read();
+    uint16_t fwMajor = vBuf[0] | (vBuf[1] << 8);
+    char vStr[32];
+    snprintf(vStr, sizeof(vStr), "%d.%d.%d.%02d", fwMajor, vBuf[2], vBuf[3]>>4, vBuf[3]&0x0F);
+    doc["firmware_version"] = vStr;
+    Serial.printf("[DIAG] FW: %s (%d bytes)\n", vStr, vBytes);
+    
+    // Step 3: Send bootloader command
+    Serial.println("[DIAG] Sending {0x99, 0xB0}...");
+    Wire1.beginTransmission(0x30);
+    Wire1.write(0x99);
+    Wire1.write(0xB0);
+    uint8_t wr = Wire1.endTransmission();
+    doc["writeResult"] = wr;
+    Serial.printf("[DIAG] Write: %d (%s)\n", wr, wr==0?"ACK":"FAIL");
+    
+    if (wr != 0) {
+      doc["success"] = false;
+      doc["error"] = "Write failed";
+      String response;
+      serializeJson(doc, response);
+      request->send(500, "application/json", response);
+      return;
+    }
+    
+    // Step 4: RAPID poll - check 0x30 every 10ms for 500ms 
+    // WDT is 15ms, so reset should happen within ~20ms
+    // Arduino boot takes ~100ms, so there should be a gap
+    Serial.println("[DIAG] Rapid poll (10ms intervals):");
+    int gapStart = -1, gapEnd = -1;
+    bool found14 = false;
+    int found14At = -1;
+    
+    for (int i = 0; i < 50; i++) {
+      delay(10);
+      int t = (i + 1) * 10;
+      
+      Wire1.beginTransmission(0x30);
+      uint8_t r30 = Wire1.endTransmission();
+      Wire1.beginTransmission(0x14);
+      uint8_t r14 = Wire1.endTransmission();
+      
+      bool has30 = (r30 == 0);
+      bool has14 = (r14 == 0);
+      
+      if (!has30 && gapStart == -1) gapStart = t;
+      if (has30 && gapStart != -1 && gapEnd == -1) gapEnd = t;
+      if (has14 && !found14) { found14 = true; found14At = t; }
+      
+      // Log interesting events
+      if (!has30 || has14) {
+        Serial.printf("[DIAG] T+%3dms: 0x30=%s  0x14=%s\n", t,
+                      has30?"YES":" - ", has14?"YES":" - ");
+      }
+    }
+    
+    // Step 5: Check at T+2s
+    delay(1500);
+    Wire1.beginTransmission(0x30);
+    uint8_t late30 = Wire1.endTransmission();
+    Wire1.beginTransmission(0x14);
+    uint8_t late14 = Wire1.endTransmission();
+    bool lateBoot = (late14 == 0);
+    Serial.printf("[DIAG] T+2s: 0x30=%s  0x14=%s\n",
+                  late30==0?"YES":" - ", late14==0?"YES":" - ");
+    if (lateBoot) { found14 = true; found14At = 2000; }
+    
+    // Step 6: Twiboot has a 5s _delay_ms() after EEPROM match - check at T+6s
+    if (!found14) {
+      delay(4000);
+      Wire1.beginTransmission(0x30);
+      uint8_t vl30 = Wire1.endTransmission();
+      Wire1.beginTransmission(0x14);
+      uint8_t vl14 = Wire1.endTransmission();
+      Serial.printf("[DIAG] T+6s: 0x30=%s  0x14=%s\n",
+                    vl30==0?"YES":" - ", vl14==0?"YES":" - ");
+      doc["post6s_0x30"] = vl30 == 0;
+      doc["post6s_0x14"] = vl14 == 0;
+      if (vl14 == 0) { found14 = true; found14At = 6000; }
+      // If 0x30 came back, twiboot timed out or isn't present
+      if (vl30 == 0 && vl14 != 0) {
+        doc["note"] = "App restarted at 0x30 - twiboot may have timed out or boot magic not written";
+      }
+    }
+    
+    // Results
+    doc["success"] = true;
+    doc["gap_detected"] = (gapStart != -1);
+    doc["gap_start_ms"] = gapStart;
+    doc["gap_end_ms"] = gapEnd;
+    doc["bootloader_found"] = found14;
+    doc["bootloader_found_at_ms"] = found14At;
+    doc["post2s_0x30"] = late30 == 0;
+    doc["post2s_0x14"] = lateBoot;
+    
+    if (found14) {
+      doc["diagnosis"] = "SUCCESS: Bootloader at 0x14!";
+      Serial.println("[DIAG] ✓ BOOTLOADER FOUND!");
+    } else if (gapStart != -1) {
+      char diag[128];
+      snprintf(diag, sizeof(diag), 
+        "Arduino RESETS (gap at %dms-%dms) but NO bootloader! Twiboot NOT in flash. Reflash via ISP.",
+        gapStart, gapEnd > 0 ? gapEnd : 500);
+      doc["diagnosis"] = diag;
+      Serial.printf("[DIAG] ✗ Reset detected but no twiboot! Gap: %d-%dms\n", gapStart, gapEnd);
+    } else {
+      doc["diagnosis"] = "Arduino did NOT reset. ISR not executing bootloader code. Check firmware.";
+      Serial.println("[DIAG] ✗ No reset detected at all");
+    }
+    
+    Serial.println("========================================\n");
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // API: Exit bootloader mode - sends CMD_SWITCH_APPLICATION + BOOTTYPE_APPLICATION to Twiboot
+  server.on("/api/i2c/exit-bootloader", HTTP_POST, [](AsyncWebServerRequest *request) {
+    bool debugEnabledBool = Settings::stringToBool(settings.debugEnabled);
+    if (!debugEnabledBool) {
+      request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+      return;
+    }
+
+    I2CManager& manager = I2CManager::getInstance();
+    JsonDocument doc;
+    
+    // Send exit-bootloader command via I2CManager (with mutex)
+    uint8_t exitCmd[2] = {0x01, 0x80};  // CMD_SWITCH_APPLICATION + BOOTTYPE_APPLICATION
+    bool success = manager.write(0x14, exitCmd, 2);
+    
+    if (success) {
+      doc["success"] = true;
+      doc["message"] = "Bootloader exit command sent";
+      doc["hint"] = "Arduino will return to application mode";
+      Serial.println("[API] Bootloader exit command sent (0x01 + 0x80) via I2CManager");
+    } else {
+      doc["success"] = false;
+      doc["error"] = "Failed to send exit command - bootloader not responding at 0x14";
+      Serial.println("[API] ERROR: Bootloader exit command failed");
+    }
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // API: Reset Arduino - exits bootloader if active, otherwise reports status
+  server.on("/api/i2c/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
+    bool debugEnabledBool = Settings::stringToBool(settings.debugEnabled);
+    if (!debugEnabledBool) {
+      request->send(403, "application/json", "{\"error\":\"Debug mode required\"}");
+      return;
+    }
+
+    I2CManager& manager = I2CManager::getInstance();
+    JsonDocument doc;
+    
+    bool bootloaderActive = manager.ping(0x14, I2C_BUS_SLAVE);
+    bool appActive = manager.ping(0x30, I2C_BUS_SLAVE);
+    
+    if (bootloaderActive) {
+      uint8_t exitCmd[2] = {0x01, 0x80};
+      manager.write(0x14, exitCmd, 2);
+      Serial.println("[API] Reset: sent exit bootloader command (0x01+0x80)");
+      delay(500);
+      
+      bool appNow = manager.ping(0x30, I2C_BUS_SLAVE);
+      doc["success"] = true;
+      doc["message"] = appNow ? "Arduino reset - app running" : "Exit command sent, app starting...";
+    } else if (appActive) {
+      doc["success"] = true;
+      doc["message"] = "Arduino app is already running (address 0x30)";
+      Serial.println("[API] Reset: app already running at 0x30");
+    } else {
+      doc["success"] = false;
+      doc["error"] = "Arduino not responding on 0x30 (app) or 0x14 (bootloader)";
+      Serial.println("[API] Reset: no response on either address");
+    }
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
   });
 
   // API: Get device register dump

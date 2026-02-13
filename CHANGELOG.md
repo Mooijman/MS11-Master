@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.13.01] - 2026-02-13
+
+### Fixed
+- **Twiboot I2C Bootloader Integration**: Fixed bootloader entry/exit command routing
+  - `/api/i2c/bootloader` and `/api/i2c/exit-bootloader` now use `I2CManager` instead of direct `Wire1` calls
+  - Prevents mutex conflicts with heartbeat polling on slave bus (GPIO5/6)
+  - Bootloader entry (register 0x99 + magic 0xB0) now reliably triggers EEPROM write + WDT reset
+  - Exit bootloader (0x01 + 0x80) correctly sends CMD_SWITCH_APPLICATION to twiboot at 0x14
+- **I2C Bus Mutex Handling**: Resolved race condition between web API commands and background heartbeat
+  - All bootloader operations now properly acquire slave bus mutex before Wire1 access
+  - Fixed "Arduino not responding" errors caused by concurrent I2C transactions
+
+### Changed
+- **Bootloader Protocol Documentation**: Clarified twiboot integration requirements
+  - Confirmed EEPROM boot magic: bytes 510-511 = 0xB007 (little-endian: 0x07, 0xB0)
+  - Documented 5-second twiboot startup delay before TWI becomes active
+  - Verified fuse settings: hfuse=0xD4 (BOOTRST active, 2KB bootloader section @ 0x7800)
+- **ISP Flash Procedure**: Documented correct avrdude sequence to preserve twiboot
+  - Must use `-D` flag (no erase) when uploading application after initial chip erase
+  - Twiboot must be reflashed after any full chip erase (`-e`)
+  - Recommended sequence: chip erase → app with `-D` → twiboot with `-D`
+
+### Technical Notes
+- **Root Cause**: PlatformIO ISP upload (`pio run -t upload`) performs chip erase, wiping twiboot from boot section
+- **Solution**: Either use PlatformIO bootloader target or manual avrdude with `-B10 -D` flags
+- **Verification**: Bus scan diagnostics confirmed Arduino transitions 0x30 (app) ↔ 0x14 (bootloader) reliably
+
 ## [2026.2.12.03] - 2026-02-12
 
 ### Changed

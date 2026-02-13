@@ -35,7 +35,8 @@
 - Debug OFF also disables GPIO Viewer + OTA for security (see settings POST handler in [src/main.cpp](../src/main.cpp)).
 - NTP date writes are wear‑limited (see `saveStoredDateIfNeeded()` in [src/settings.cpp](../src/settings.cpp)).
 - Boot time saved to NVS only when debug enabled + NTP synced (uses timezone from settings at boot time).
-- **I2C Bootloader Protocol**: Application at 0x30, Twiboot bootloader at 0x14 (after activation). Exit bootloader requires two-byte sequence: 0x01 + 0x80 (not single 0x00).
+- **I2C Bootloader Protocol**: Application at 0x30, Twiboot bootloader at 0x14 (after activation). Exit bootloader requires two-byte sequence: 0x01 + 0x80. See [TWIBOOT_INTEGRATION.md](../TWIBOOT_INTEGRATION.md) for full details.
+- **CRITICAL**: All I2C slave bus operations MUST use `I2CManager` methods to prevent mutex conflicts with heartbeat polling. Never use direct `Wire1` calls from web routes.
 
 ## Web UI patterns
 - HTML templates use `%VAR%` tokens replaced in `server.on("/settings", HTTP_GET)` in [src/main.cpp](../src/main.cpp).

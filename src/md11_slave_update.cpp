@@ -7,67 +7,29 @@ MD11SlaveUpdate::MD11SlaveUpdate() {
 
 bool MD11SlaveUpdate::requestBootloaderMode() {
   // Send bootloader activation command to app at 0x30
-  // This tells app to set EEPROM flag and reboot via watchdog
+  // This tells app to set EEPROM flag and reboot
   
   Serial.println("[MD11SlaveUpdate] Requesting bootloader mode via I2C Bus 1 (Slave Bus)...");
   
   I2CManager& manager = I2CManager::getInstance();
   
-  // Verify app is responding
-  if (!manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE)) {
-    lastError = "Target app at 0x30 not responding before bootloader command";
+  // Use slave bus (Wire1, GPIO5/6) for the slave controller
+  uint8_t cmd = APP_BOOTLOADER_COMMAND;  // 0x42 ('B')
+  if (!manager.write(APP_I2C_ADDR, &cmd, 1)) {
+    lastError = "Failed to send bootloader command to app (0x" + String(APP_I2C_ADDR, HEX) + ")";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
     return false;
   }
-  Serial.println("[MD11SlaveUpdate] ✓ Target app at 0x30 is responding");
   
-  // Send bootloader activation: register 0x99 with magic byte 0xB0
-  // Uses writeRegister() which goes directly via slave bus (Wire1)
-  Serial.printf("[MD11SlaveUpdate] Sending bootloader command: REG=0x%02X, MAGIC=0x%02X\n",
-                APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC);
-  
-  if (!manager.writeRegister(APP_I2C_ADDR, APP_BOOTLOADER_REGISTER, APP_BOOTLOADER_MAGIC)) {
-    lastError = "Failed to send bootloader command to app";
-    Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
-    return false;
-  }
-  Serial.println("[MD11SlaveUpdate] ✓ Bootloader command sent successfully");
+  Serial.println("[MD11SlaveUpdate] Bootloader command sent. Waiting for app to reboot...");
   
   // Wait for app to reboot and bootloader to start
-  // DO NOT ping or send any I2C traffic during this time!
-  // The Arduino needs uninterrupted time to: process command → write EEPROM → watchdog reset → bootloader starts
-  Serial.println("[MD11SlaveUpdate] Waiting 8 seconds for reboot + bootloader startup...");
-  Serial.println("[MD11SlaveUpdate] (No I2C traffic during this time)");
-  delay(8000);
+  delay(2000);
   
-  // Now check if bootloader is available
-  Serial.println("[MD11SlaveUpdate] Checking if bootloader at 0x14 is responding...");
-  bool bootloaderFound = false;
-  for (int attempt = 1; attempt <= 5; attempt++) {
-    if (manager.ping(TWIBOOT_I2C_ADDR, I2C_BUS_SLAVE)) {
-      Serial.printf("[MD11SlaveUpdate] ✓ Bootloader at 0x14 detected (attempt %d)\n", attempt);
-      bootloaderFound = true;
-      break;
-    }
-    Serial.printf("[MD11SlaveUpdate] Bootloader ping attempt %d/5 failed\n", attempt);
-    delay(500);
-  }
-  
-  if (!bootloaderFound) {
-    // Check if app is still at 0x30 (didn't reboot)
-    bool appStillThere = manager.ping(APP_I2C_ADDR, I2C_BUS_SLAVE);
-    Serial.printf("[MD11SlaveUpdate] App at 0x30: %s\n", appStillThere ? "STILL RESPONDING (reboot failed)" : "gone");
-    lastError = appStillThere 
-      ? "App at 0x30 did not reboot - bootloader command was ignored by firmware"
-      : "App rebooted but bootloader at 0x14 not detected";
-    Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
-    return false;
-  }
-  
-  // Verify bootloader by reading version
+  // Verify bootloader is active by querying version
   String version;
   if (!queryBootloaderVersion(version)) {
-    lastError = "Bootloader at 0x14 detected but version query failed";
+    lastError = "Bootloader did not respond after reboot";
     Serial.println("[MD11SlaveUpdate] ERROR: " + lastError);
     return false;
   }
@@ -79,51 +41,24 @@ bool MD11SlaveUpdate::requestBootloaderMode() {
 bool MD11SlaveUpdate::queryBootloaderVersion(String& version) {
   Serial.println("[MD11SlaveUpdate] Querying bootloader version...");
   
-  // IMPORTANT: In Twiboot, the version is read by simply doing a requestFrom()
-  // WITHOUT sending any command byte first. The bootloader has version info
-  // ready in its buffer by default.
-  // DO NOT send command 0x01 - that is CMD_SWITCH_APPLICATION which exits the bootloader!
+  uint8_t response[16];
+  uint16_t responseLen = sizeof(response);
   
-  const int MAX_ATTEMPTS = 5;
-  TwoWire* wire = &Wire1;  // Slave bus (GPIO5/6)
-  
-  for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    Serial.printf("[MD11SlaveUpdate] Version read attempt %d/%d...\n", attempt, MAX_ATTEMPTS);
-    
-    // Just request bytes - no write command needed for Twiboot version read
-    size_t available = wire->requestFrom((uint8_t)TWIBOOT_I2C_ADDR, (uint8_t)16);
-    Serial.printf("[MD11SlaveUpdate] requestFrom(0x14, 16) returned %d bytes available\n", available);
-    
-    if (available >= 4) {
-      uint8_t response[16];
-      uint16_t bytesRead = 0;
-      while (wire->available() && bytesRead < 16) {
-        response[bytesRead++] = wire->read();
-      }
-      
-      Serial.printf("[MD11SlaveUpdate] Read %d bytes: ", bytesRead);
-      for (int i = 0; i < bytesRead; i++) {
-        Serial.printf("0x%02X ", response[i]);
-      }
-      Serial.println();
-      
-      // Twiboot response: [module_id, version, page_size_words_low, page_size_words_high]
-      version = String(response[0]) + "." + String(response[1]);
-      Serial.println("[MD11SlaveUpdate] Bootloader version: " + version);
-      return true;
-    }
-    
-    // Flush any partial data
-    while (wire->available()) wire->read();
-    
-    if (attempt < MAX_ATTEMPTS) {
-      Serial.printf("[MD11SlaveUpdate] Too few bytes, retrying in 500ms...\n");
-      delay(500);
-    }
+  if (!sendBootloaderCommand(TWIBOOT_READ_VERSION, nullptr, 0, response, &responseLen)) {
+    lastError = "Failed to query bootloader version";
+    return false;
   }
   
-  lastError = "Failed to read bootloader version after " + String(MAX_ATTEMPTS) + " attempts";
-  return false;
+  if (responseLen < 4) {
+    lastError = "Invalid version response length";
+    return false;
+  }
+  
+  // Response format: major, minor, features_low, features_high
+  version = String(response[0]) + "." + String(response[1]);
+  Serial.println("[MD11SlaveUpdate] Bootloader version: " + version);
+  
+  return true;
 }
 
 bool MD11SlaveUpdate::queryChipSignature(uint8_t& sig0, uint8_t& sig1, uint8_t& sig2) {

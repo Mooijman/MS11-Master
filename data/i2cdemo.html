@@ -6,10 +6,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="favicon.png">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <style>
+    .progress-bar {
+      width: 100%;
+      height: 30px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background-color: #1282A2;
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .text-success {
+      color: #27ae60;
+      font-weight: bold;
+    }
+    .text-small {
+      font-size: 12px;
+    }
+  </style>
 </head>
 <body class="card-layout">
   <div class="topnav">
-    <img src="waacs-logo.png" alt="Waacs Design &amp; Consultancy">
+    <img src="waacs-logo.png" alt="Waacs Design & Consultancy">
   </div>
   <div class="content">
     <div class="card-grid">
@@ -35,12 +64,99 @@
             <p class="text-left text-muted line-height-16">LED status: <span id="led-status">-</span></p>
           </div>
 
+          <hr class="hr-divider">
+
+          <!-- Bootloader Control Section -->
+          <div class="margin-bottom-20">
+            <h3 style="text-align: left; color: #555; font-size: 16px; margin-bottom: 10px;">Bootloader Control</h3>
+            <div class="form-actions-right" style="gap: 10px;">
+              <button class="btn-small btn-danger" onclick="enterBootloaderMode()">Enter Bootloader</button>
+              <button class="btn-small btn-secondary" onclick="exitBootloaderMode()">Exit Bootloader</button>
+              <button class="btn-small btn-secondary" onclick="resetArduino()">Reset Arduino</button>
+            </div>
+          </div>
+
+          <div id="bootloader-status" class="margin-top-20 hidden">
+            <p class="text-left" id="bootloader-message"></p>
+          </div>
+
+          <hr class="hr-divider">
+
+          <!-- Firmware Update Section -->
+          <div class="margin-bottom-20">
+            <h3 style="text-align: left; color: #555; font-size: 16px; margin-bottom: 10px;">Arduino Firmware Update</h3>
+            
+            <!-- Info Section -->
+            <div class="margin-bottom-20">
+              <p class="text-left text-muted line-height-16">
+                <strong>Arduino Pro Mini</strong><br>
+                <span id="fw-bootloader-status">-</span><br>
+                <span id="chip-info">-</span>
+              </p>
+              <p class="italic-muted-text" id="connection-status">
+                Checking connection...
+              </p>
+            </div>
+            
+            <!-- Upload Section -->
+            <div id="upload-section" class="hidden">
+              <div class="margin-bottom-20">
+                <label for="hex-file" style="margin-top: 0;">Intel HEX File:</label>
+                <input type="file" id="hex-file" accept=".hex" style="margin: 5px 0; display: block; width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background-color: white;">
+                <p class="text-small text-muted" style="margin-top: 5px;">Select a .hex firmware file for the Arduino</p>
+              </div>
+              
+              <div id="upload-info" class="margin-bottom-20 hidden">
+                <p class="text-muted">
+                  File: <span id="file-name">-</span><br>
+                  Size: <span id="file-size">-</span> bytes
+                </p>
+              </div>
+              
+              <!-- Progress Bar -->
+              <div id="progress-section" class="margin-top-20 hidden">
+                <div class="progress-bar">
+                  <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <p class="text-center text-small">
+                  <span id="progress-text">0%</span>
+                </p>
+                <p id="progress-status" class="text-center text-small text-muted">Preparing...</p>
+              </div>
+              
+              <div class="text-right margin-top-20">
+                <button id="upload-btn" class="btn-small btn-update" onclick="startUpload()">Upload</button>
+              </div>
+            </div>
+            
+            <!-- Error Section -->
+            <div id="error-section" class="hidden">
+              <p class="error-text"><strong>Error:</strong></p>
+              <p id="error-message" class="text-small text-muted"></p>
+              <div class="text-right margin-top-20">
+                <button class="btn-small" onclick="checkFirmwareStatus()">Retry</button>
+              </div>
+            </div>
+            
+            <!-- Success Section -->
+            <div id="success-section" class="hidden">
+              <p class="text-success"><strong>✅ Update Successful!</strong></p>
+              <p class="text-small text-muted margin-top-10">Arduino will restart now.</p>
+              <div class="text-right margin-top-20">
+                <button class="btn-small" onclick="checkFirmwareStatus()">Done</button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
   </div>
 
   <script>
+    // ===========================
+    // LED Control Functions
+    // ===========================
     function sendLedCommand(action) {
       fetch('/api/i2c/led', {
         method: 'POST',
@@ -59,6 +175,296 @@
       })
       .catch(() => document.getElementById('led-status').innerHTML = '<span style="color: #e74c3c;">I2C commando mislukt</span>');
     }
+
+    // ===========================
+    // Bootloader Control Functions
+    // ===========================
+    let bootloaderPollInterval = null;
+    let bootloaderPollAttempts = 0;
+    // Bootloader has 5s startup delay + boot_timeout=0xFFFF (~minutes),
+    // so we poll for up to 15 seconds to detect it
+    const MAX_POLL_ATTEMPTS = 30;  // 30 * 500ms = 15 seconds
+
+    function enterBootloaderMode() {
+      const statusDiv = document.getElementById('bootloader-status');
+      const messageEl = document.getElementById('bootloader-message');
+      
+      bootloaderConnected = false;
+      bootloaderPollAttempts = 0;
+      stopPolling();
+      
+      statusDiv.classList.remove('hidden');
+      messageEl.innerHTML = '<span style="color: #999;">Bootloader commando wordt verzonden...</span>';
+
+      fetch('/api/i2c/bootloader', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
+            '<span style="color: #856404; font-size: 12px; font-style: italic;">Bootloader start duurt ~5 seconden. Polling...</span>';
+          
+          // Start polling to detect bootloader (it takes ~5s to become ready)
+          bootloaderPollInterval = setInterval(() => {
+            bootloaderPollAttempts++;
+            if (bootloaderPollAttempts > MAX_POLL_ATTEMPTS) {
+              stopPolling();
+              messageEl.innerHTML += '<br><span style="color: #856404; font-size: 11px;">Timeout: Bootloader niet gevonden na 15 seconden.</span>';
+              return;
+            }
+            checkFirmwareStatus();
+          }, 500);
+        } else {
+          messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
+        }
+      })
+      .catch(error => {
+        messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
+        console.error('Error:', error);
+      });
+    }
+
+    function exitBootloaderMode() {
+      const statusDiv = document.getElementById('bootloader-status');
+      const messageEl = document.getElementById('bootloader-message');
+      
+      statusDiv.classList.remove('hidden');
+      messageEl.innerHTML = '<span style="color: #999;">Exit bootloader commando wordt verzonden...</span>';
+
+      fetch('/api/i2c/exit-bootloader', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span><br>' +
+            '<span style="color: #999; font-size: 12px;">Arduino is terug in normale mode (I2C adres 0x30).</span>';
+          bootloaderConnected = false;
+          stopPolling();
+          setTimeout(checkFirmwareStatus, 1000);
+        } else {
+          messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
+        }
+      })
+      .catch(error => {
+        messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
+      });
+    }
+
+    function resetArduino() {
+      const statusDiv = document.getElementById('bootloader-status');
+      const messageEl = document.getElementById('bootloader-message');
+      
+      statusDiv.classList.remove('hidden');
+      messageEl.innerHTML = '<span style="color: #999;">Reset commando wordt verzonden...</span>';
+
+      fetch('/api/i2c/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ ' + data.message + '</span>';
+          bootloaderConnected = false;
+          stopPolling();
+          setTimeout(checkFirmwareStatus, 1000);
+        } else {
+          messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Fout: ' + data.error + '</span>';
+        }
+      })
+      .catch(error => {
+        messageEl.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">✗ Verbindingsfout</span>';
+      });
+    }
+
+    function stopPolling() {
+      if (bootloaderPollInterval) {
+        clearInterval(bootloaderPollInterval);
+        bootloaderPollInterval = null;
+      }
+    }
+
+    function sendResetCommand() {
+      console.log('Sending reset command to exit bootloader...');
+      
+      fetch('/api/i2c/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Reset response:', data);
+        if (data.success) {
+          // Give Arduino time to restart
+          setTimeout(() => {
+            showSuccess();
+          }, 1000);
+        } else {
+          showError('Reset failed: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(error => {
+        console.error('Reset error:', error);
+        showError('Reset command failed: ' + error);
+      });
+    }
+
+    // ===========================
+    // Firmware Update Functions
+    // ===========================
+    let selectedFile = null;
+    let bootloaderConnected = false;
+    
+    function checkFirmwareStatus() {
+      // Don't reset UI if already connected - bootloader stays active on its own
+      // (boot_timeout = 0xFFFF in Twiboot = minutes of idle time)
+      if (bootloaderConnected) {
+        return;
+      }
+      
+      fetch('/api/twi/status')
+        .then(response => response.json())
+        .then(data => {
+          if (data.connected) {
+            bootloaderConnected = true;
+            stopPolling();  // Stop detection polling
+            
+            document.getElementById('fw-bootloader-status').textContent = 'Connected ✓';
+            document.getElementById('chip-info').textContent = 'Signature: ' + (data.signature || '-');
+            document.getElementById('connection-status').textContent = 'Bootloader version: ' + (data.version || '-');
+            document.getElementById('upload-section').classList.remove('hidden');
+            document.getElementById('error-section').classList.add('hidden');
+            
+            // Update bootloader status message
+            const messageEl = document.getElementById('bootloader-message');
+            if (messageEl) {
+              messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ Bootloader verbonden</span><br>' +
+                '<span style="color: #999; font-size: 12px;">Arduino is in bootloader mode. U kunt nu firmware uploaden.</span>';
+              document.getElementById('bootloader-status').classList.remove('hidden');
+            }
+          } else {
+            document.getElementById('fw-bootloader-status').textContent = 'Ready';
+            document.getElementById('connection-status').innerHTML = '<span style="color: #666;">Arduino in normal mode. Click "Enter Bootloader" above.</span>';
+            document.getElementById('chip-info').textContent = '-';
+            document.getElementById('upload-section').classList.add('hidden');
+          }
+        })
+        .catch(error => {
+          console.error('Status check failed:', error);
+        });
+    }
+    
+    document.getElementById('hex-file').addEventListener('change', function(e) {
+      selectedFile = e.target.files[0];
+      if (selectedFile) {
+        document.getElementById('file-name').textContent = selectedFile.name;
+        document.getElementById('file-size').textContent = selectedFile.size;
+        document.getElementById('upload-info').classList.remove('hidden');
+      } else {
+        document.getElementById('upload-info').classList.add('hidden');
+      }
+    });
+    
+    function startUpload() {
+      if (!selectedFile) {
+        showError('Please select a hex file');
+        return;
+      }
+      
+      console.log('Starting upload of ' + selectedFile.name);
+      document.getElementById('upload-section').classList.add('hidden');
+      document.getElementById('progress-section').classList.remove('hidden');
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const hexContent = e.target.result;
+        
+        fetch('/api/twi/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hexContent: hexContent })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            // Upload successful - now send reset command to exit bootloader
+            console.log('Upload successful, sending reset command...');
+            sendResetCommand();
+          } else {
+            showError(data.error || 'Upload failed');
+          }
+        })
+        .catch(error => {
+          showError('Upload failed: ' + error);
+        });
+        
+        updateProgressWithInterval(hexContent.length);
+      };
+      reader.readAsText(selectedFile);
+    }
+    
+    function updateProgressWithInterval(totalSize) {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.random() * 30;
+        if (progress > 90) progress = 90;
+        updateProgress(Math.floor(progress), totalSize);
+        if (progress >= 90) clearInterval(interval);
+      }, 500);
+    }
+    
+    function updateProgress(percent, totalSize) {
+      document.getElementById('progress-fill').style.width = percent + '%';
+      document.getElementById('progress-text').textContent = percent + '%';
+      
+      if (percent < 30) {
+        document.getElementById('progress-status').textContent = 'Requesting bootloader mode...';
+      } else if (percent < 50) {
+        document.getElementById('progress-status').textContent = 'Erasing memory...';
+      } else if (percent < 90) {
+        document.getElementById('progress-status').textContent = 'Writing flash...';
+      } else {
+        document.getElementById('progress-status').textContent = 'Finalizing...';
+      }
+    }
+    
+    function showError(message) {
+      bootloaderConnected = false;
+      document.getElementById('progress-section').classList.add('hidden');
+      document.getElementById('error-section').classList.remove('hidden');
+      document.getElementById('error-message').textContent = message;
+    }
+    
+    function showSuccess() {
+      bootloaderConnected = false;
+      
+      document.getElementById('progress-section').classList.add('hidden');
+      document.getElementById('progress-fill').style.width = '100%';
+      document.getElementById('progress-text').textContent = '100%';
+      document.getElementById('success-section').classList.remove('hidden');
+      document.getElementById('upload-section').classList.add('hidden');
+      
+      // Update status to show bootloader exited
+      document.getElementById('fw-bootloader-status').textContent = 'Ready';
+      document.getElementById('connection-status').innerHTML = '<span style="color: #27ae60;">✓ Firmware updated successfully</span><br>' +
+        '<span style="color: #999; font-size: 12px;">Arduino is back in normal mode.</span>';
+      document.getElementById('chip-info').textContent = '-';
+      
+      // Hide bootloader status message
+      const messageEl = document.getElementById('bootloader-message');
+      if (messageEl) {
+        messageEl.innerHTML = '<span style="color: #27ae60; font-weight: bold;">✓ Firmware update complete</span><br>' +
+          '<span style="color: #999; font-size: 12px;">Arduino is back in normal mode (0x30).</span>';
+        document.getElementById('bootloader-status').classList.remove('hidden');
+      }
+    }
+    
+    // Check status on page load
+    checkFirmwareStatus();
   </script>
 </body>
 </html>
