@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MS11 Telemetry Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="style.css">
+  <style>
+    /* Dashboard-specific styles */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: var(--spacing-2xl);
+      margin-bottom: var(--spacing-3xl);
+    }
+    
+    .stat-card {
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+      color: white;
+      padding: var(--spacing-3xl);
+      border-radius: var(--border-radius-xl);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card h3 {
+      font-size: var(--font-size-sm);
+      opacity: 0.9;
+      margin: 0 0 var(--spacing-md) 0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: normal;
+    }
+    
+    .stat-card .value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin: var(--spacing-md) 0;
+      color: white;
+    }
+    
+    .stat-card .unit {
+      font-size: var(--font-size-base);
+      opacity: 0.8;
+    }
+    
+    .device-card {
+      background: white;
+      border-radius: var(--border-radius-xl);
+      padding: var(--spacing-3xl);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      margin-bottom: var(--spacing-2xl);
+      border-left: 4px solid var(--color-primary);
+    }
+    
+    .device-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--spacing-2xl);
+      padding-bottom: var(--spacing-2xl);
+      border-bottom: 1px solid var(--color-neutral-gray-very-pale);
+    }
+    
+    .device-name {
+      font-size: var(--font-size-xl);
+      color: var(--color-primary);
+      font-weight: bold;
+      margin: 0;
+    }
+    
+    .device-status {
+      display: inline-block;
+      padding: var(--spacing-sm) var(--spacing-xl);
+      border-radius: var(--border-radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+    }
+    
+    .status-online {
+      background: var(--color-success);
+      color: white;
+    }
+    
+    .status-offline {
+      background: var(--color-neutral-gray);
+      color: white;
+    }
+    
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--spacing-2xl);
+    }
+    
+    .telemetry-item {
+      text-align: center;
+    }
+    
+    .telemetry-label {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-muted);
+      margin-bottom: var(--spacing-sm);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .telemetry-value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: var(--color-text-primary);
+    }
+    
+    .telemetry-unit {
+      font-size: var(--font-size-md);
+      color: var(--color-text-secondary);
+      margin-left: var(--spacing-sm);
+    }
+    
+    .chart-container {
+      margin-top: var(--spacing-3xl);
+      background: white;
+      border-radius: var(--border-radius-xl);
+      padding: var(--spacing-3xl);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .chart-title {
+      font-size: var(--font-size-lg);
+      color: var(--color-text-primary);
+      margin-bottom: var(--spacing-2xl);
+      font-weight: 500;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: var(--spacing-3xl);
+      color: var(--color-text-muted);
+      font-style: italic;
+    }
+    
+    .error-message {
+      background: var(--color-bg-warning);
+      color: var(--color-text-warning);
+      padding: var(--spacing-2xl);
+      border-radius: var(--border-radius-md);
+      border-left: 4px solid var(--color-warning);
+      margin: var(--spacing-2xl) 0;
+    }
+    
+    .refresh-btn {
+      background: var(--color-secondary);
+      color: white;
+      border: none;
+      padding: var(--spacing-xl) var(--spacing-3xl);
+      border-radius: var(--border-radius-md);
+      cursor: pointer;
+      font-size: var(--font-size-base);
+      transition: background var(--transition-base);
+    }
+    
+    .refresh-btn:hover {
+      background: var(--color-primary);
+    }
+    
+    .last-update {
+      text-align: right;
+      color: var(--color-text-muted);
+      font-size: var(--font-size-sm);
+      margin-top: var(--spacing-2xl);
+    }
+  </style>
+</head>
+<body class="card-layout">
+  <div class="topnav">
+    <img src="../../data/waacs-logo.png" alt="Waacs Design & Consultancy">
+  </div>
+  
+  <div class="content">
+    <!-- Summary Statistics -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <h3>Active Devices</h3>
+        <div class="value">
+          <span id="active-devices">-</span>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <h3>Average Temperature</h3>
+        <div class="value">
+          <span id="avg-temperature">-</span>
+          <span class="unit">°C</span>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <h3>Average Humidity</h3>
+        <div class="value">
+          <span id="avg-humidity">-</span>
+          <span class="unit">%</span>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <h3>Total Data Points</h3>
+        <div class="value">
+          <span id="total-datapoints">-</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Controls -->
+    <div style="text-align: center; margin-bottom: var(--spacing-3xl);">
+      <button class="refresh-btn" onclick="loadDashboardData()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+        Refresh Data
+      </button>
+      <div class="last-update" id="last-update">Last updated: -</div>
+    </div>
+    
+    <!-- Device Cards -->
+    <div id="devices-container">
+      <div class="loading">Loading device data...</div>
+    </div>
+    
+    <!-- Error Display -->
+    <div id="error-container" style="display: none;">
+      <div class="error-message">
+        <strong>Error:</strong> <span id="error-message"></span>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Configuration
+    const API_BASE_URL = '../api';
+    const REFRESH_INTERVAL = 30000; // 30 seconds
+    
+    let refreshTimer = null;
+    
+    // Format timestamp
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleString('nl-NL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+    
+    // Calculate time difference
+    function getTimeDifference(timestamp) {
+      const now = new Date();
+      const then = new Date(timestamp);
+      const diffMs = now - then;
+      const diffMins = Math.floor(diffMs / 60000);
+      
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return diffMins + ' min ago';
+      
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return diffHours + ' hour' + (diffHours > 1 ? 's' : '') + ' ago';
+      
+      const diffDays = Math.floor(diffHours / 24);
+      return diffDays + ' day' + (diffDays > 1 ? 's' : '') + ' ago';
+    }
+    
+    // Check if device is online (within last 5 minutes)
+    function isDeviceOnline(timestamp) {
+      const now = new Date();
+      const then = new Date(timestamp);
+      const diffMs = now - then;
+      return diffMs < 300000; // 5 minutes
+    }
+    
+    // Show error
+    function showError(message) {
+      document.getElementById('error-container').style.display = 'block';
+      document.getElementById('error-message').textContent = message;
+    }
+    
+    // Hide error
+    function hideError() {
+      document.getElementById('error-container').style.display = 'none';
+    }
+    
+    // Load dashboard data
+    async function loadDashboardData() {
+      try {
+        hideError();
+        
+        // Fetch devices list
+        const devicesResponse = await fetch(`${API_BASE_URL}/query.php?action=list_devices`);
+        if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
+        const devicesData = await devicesResponse.json();
+        
+        // Fetch latest telemetry data
+        const telemetryResponse = await fetch(`${API_BASE_URL}/query.php?action=latest_data`);
+        if (!telemetryResponse.ok) throw new Error('Failed to fetch telemetry data');
+        const telemetryData = await telemetryResponse.json();
+        
+        // Update statistics
+        updateStatistics(devicesData.devices, telemetryData.data);
+        
+        // Update device cards
+        updateDeviceCards(telemetryData.data);
+        
+        // Update last update time
+        document.getElementById('last-update').textContent = 
+          'Last updated: ' + new Date().toLocaleTimeString('nl-NL');
+        
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        showError('Failed to load dashboard data. Please check your API configuration.');
+      }
+    }
+    
+    // Update statistics
+    function updateStatistics(devices, telemetryData) {
+      // Count active devices
+      const activeDevices = devices.filter(d => isDeviceOnline(d.last_seen)).length;
+      document.getElementById('active-devices').textContent = activeDevices;
+      
+      // Calculate average temperature and humidity
+      const validTemp = telemetryData.filter(d => d.temperature !== null);
+      const validHumidity = telemetryData.filter(d => d.humidity !== null);
+      
+      const avgTemp = validTemp.length > 0 
+        ? (validTemp.reduce((sum, d) => sum + parseFloat(d.temperature), 0) / validTemp.length).toFixed(1)
+        : '-';
+      
+      const avgHumidity = validHumidity.length > 0
+        ? (validHumidity.reduce((sum, d) => sum + parseFloat(d.humidity), 0) / validHumidity.length).toFixed(0)
+        : '-';
+      
+      document.getElementById('avg-temperature').textContent = avgTemp;
+      document.getElementById('avg-humidity').textContent = avgHumidity;
+      document.getElementById('total-datapoints').textContent = telemetryData.length;
+    }
+    
+    // Update device cards
+    function updateDeviceCards(telemetryData) {
+      const container = document.getElementById('devices-container');
+      
+      if (telemetryData.length === 0) {
+        container.innerHTML = '<div class="loading">No devices found. Make sure devices are sending telemetry data.</div>';
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      telemetryData.forEach(device => {
+        const isOnline = isDeviceOnline(device.timestamp);
+        
+        const card = document.createElement('div');
+        card.className = 'device-card';
+        card.innerHTML = `
+          <div class="device-header">
+            <h2 class="device-name">${escapeHtml(device.device_name)}</h2>
+            <span class="device-status ${isOnline ? 'status-online' : 'status-offline'}">
+              ${isOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
+          
+          <div style="margin-bottom: var(--spacing-2xl); color: var(--color-text-muted); font-size: var(--font-size-sm);">
+            <div>Device ID: ${escapeHtml(device.device_id)}</div>
+            <div>Last seen: ${formatTimestamp(device.timestamp)} (${getTimeDifference(device.timestamp)})</div>
+          </div>
+          
+          <div class="telemetry-grid">
+            ${device.temperature !== null ? `
+            <div class="telemetry-item">
+              <div class="telemetry-label">Temperature</div>
+              <div class="telemetry-value">
+                ${parseFloat(device.temperature).toFixed(1)}
+                <span class="telemetry-unit">°C</span>
+              </div>
+            </div>
+            ` : ''}
+            
+            ${device.humidity !== null ? `
+            <div class="telemetry-item">
+              <div class="telemetry-label">Humidity</div>
+              <div class="telemetry-value">
+                ${parseFloat(device.humidity).toFixed(0)}
+                <span class="telemetry-unit">%</span>
+              </div>
+            </div>
+            ` : ''}
+            
+            ${device.wifi_rssi !== null ? `
+            <div class="telemetry-item">
+              <div class="telemetry-label">WiFi Signal</div>
+              <div class="telemetry-value">
+                ${device.wifi_rssi}
+                <span class="telemetry-unit">dBm</span>
+              </div>
+            </div>
+            ` : ''}
+            
+            ${device.free_heap !== null ? `
+            <div class="telemetry-item">
+              <div class="telemetry-label">Free Memory</div>
+              <div class="telemetry-value">
+                ${(device.free_heap / 1024).toFixed(0)}
+                <span class="telemetry-unit">KB</span>
+              </div>
+            </div>
+            ` : ''}
+            
+            ${device.uptime_seconds !== null ? `
+            <div class="telemetry-item">
+              <div class="telemetry-label">Uptime</div>
+              <div class="telemetry-value">
+                ${formatUptime(device.uptime_seconds)}
+              </div>
+            </div>
+            ` : ''}
+            
+            ${device.ms11_connected !== null ? `
+            <div class="telemetry-item">
+              <div class="telemetry-label">MS11 Control</div>
+              <div class="telemetry-value" style="font-size: 1.2rem; color: ${device.ms11_connected ? 'var(--color-success)' : 'var(--color-danger)'}">
+                ${device.ms11_connected ? 'Connected' : 'Disconnected'}
+              </div>
+            </div>
+            ` : ''}
+          </div>
+        `;
+        
+        container.appendChild(card);
+      });
+    }
+    
+    // Format uptime
+    function formatUptime(seconds) {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      
+      if (days > 0) return `${days}d ${hours}h`;
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
+    }
+    
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // Start auto-refresh
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(loadDashboardData, REFRESH_INTERVAL);
+    }
+    
+    // Initialize dashboard
+    window.addEventListener('DOMContentLoaded', () => {
+      loadDashboardData();
+      startAutoRefresh();
+    });
+  </script>
+</body>
+</html>
