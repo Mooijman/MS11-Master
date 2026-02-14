@@ -156,6 +156,105 @@ void delayWithBlink(unsigned long ms) {
   }
 }
 
+// Check for .hex file in LittleFS root and perform MS11-control update if found
+bool checkAndUpdateMS11Firmware() {
+  // Scan root directory for .hex files
+  File root = LittleFS.open("/");
+  if (!root || !root.isDirectory()) {
+    return false;
+  }
+  
+  String hexFilePath = "";
+  File file = root.openNextFile();
+  
+  while (file) {
+    String fileName = String(file.name());
+    if (fileName.endsWith(".hex") && !fileName.startsWith(".")) {
+      hexFilePath = "/" + fileName;
+      file.close();
+      break;
+    }
+    file.close();
+    file = root.openNextFile();
+  }
+  
+  root.close();
+  
+  if (hexFilePath.isEmpty()) {
+    return false;
+  }
+  
+  // Show update message on LCD
+  if (LCDManager::getInstance().isInitialized()) {
+    LCDManager::getInstance().clear();
+    LCDManager::getInstance().printLine(0, "MS11-Control");
+    LCDManager::getInstance().printLine(1, "Updating...");
+    startupBlinkDone = true;
+  }
+  
+  // Enter bootloader mode
+  I2CManager& manager = I2CManager::getInstance();
+  if (!manager.writeRegister(0x30, 0x99, 0xB0)) {
+    LCDManager::getInstance().printLine(1, "Update failed!");
+    delay(3000);
+    return false;
+  }
+  
+  // Wait for bootloader to start
+  delay(6000);
+  
+  // Check if bootloader is active
+  if (!manager.ping(0x14, I2C_BUS_SLAVE)) {
+    LCDManager::getInstance().printLine(1, "Bootloader fail!");
+    delay(3000);
+    return false;
+  }
+  
+  // Upload hex file
+  File hexFile = LittleFS.open(hexFilePath, "r");
+  if (!hexFile) {
+    LCDManager::getInstance().printLine(1, "File open fail!");
+    delay(3000);
+    return false;
+  }
+  
+  String hexContent = hexFile.readString();
+  hexFile.close();
+  
+  if (!md11SlaveUpdater) {
+    md11SlaveUpdater = new MD11SlaveUpdate();
+  }
+  
+  if (!md11SlaveUpdater->uploadHexFile(hexContent)) {
+    LCDManager::getInstance().printLine(1, "Upload failed!");
+    delay(3000);
+    return false;
+  }
+  
+  // Exit bootloader
+  uint8_t exitCmd[2] = {0x01, 0x80};
+  manager.write(0x14, exitCmd, 2);
+  delay(1000);
+  
+  // Delete hex file
+  delay(100);
+  if (!LittleFS.remove(hexFilePath)) {
+    // Fallback: rename to mark as processed
+    LittleFS.rename(hexFilePath, hexFilePath + ".done");
+  }
+  
+  // Show success message
+  if (LCDManager::getInstance().isInitialized()) {
+    LCDManager::getInstance().printLine(1, "Success!");
+  }
+  delay(2000);
+  
+  delay(500);
+  ESP.restart();
+  
+  return true;  // Never reached due to ESP.restart()
+}
+
 // ============================================================================
 // SETUP
 // ============================================================================
@@ -220,13 +319,19 @@ void setup() {
     Serial.println("WARNING: Probe Manager initialization did not detect any temperature sensors");
   }
   
+  // Initialize LittleFS early (needed for firmware update check)
+  initLittleFS();
+  
   // Detect MS11-control early (before WiFi, before Waacs logo)
   delayWithBlink(500);
   ms11Present = SlaveController::getInstance().ping();
   Serial.printf("[Main] MS11-control detection: %s\n", ms11Present ? "PRESENT" : "ABSENT");
   
-  // Trigger 500ms LED pulse on MS11-control when detected
+  // Check for firmware update hex file and perform update if found
   if (ms11Present) {
+    checkAndUpdateMS11Firmware();  // Will reboot if update performed
+    
+    // Trigger 500ms LED pulse on MS11-control (normal startup)
     if (SlaveController::getInstance().pulseLed(500)) {
       ledPulseStartTime = millis();
       ledPulseDurationMs = 500;
@@ -261,9 +366,7 @@ void setup() {
   DisplayManager::getInstance().clear();
   DisplayManager::getInstance().updateDisplay();
 
-  initLittleFS();
-
-  // Initialize NVS with defaults on first boot
+  // Initialize NVS with defaults on first boot (LittleFS already initialized earlier)
   settings.initialize();
 
   // Load values from NVS

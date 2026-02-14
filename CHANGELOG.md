@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.2.14.01] - 2026-02-14
+
+### Added
+- **Automatic MS11-control Firmware Update**: Upload .hex files via web interface for automatic programming
+  - New `checkAndUpdateMS11Firmware()` function scans LittleFS root for .hex files at startup
+  - Automatically enters bootloader mode (0x99/0xB0 command)
+  - Uploads firmware via I2C using Intel HEX format
+  - Exits bootloader (0x01/0x80 command) and deletes .hex file after successful upload
+  - LCD shows update progress: "MS11-Control" + "Updating..." / "Success!" / error messages
+  - ESP32 automatically restarts after successful update
+  - Makes firmware updates as simple as uploading a file through the web interface
+
+### Changed
+- **MS11-control Firmware Updated**: Replaced old `sl-2026.2.12.03.hex` with new `firmware.hex`
+  - Updated to latest MS11-control firmware version
+  - Available in filesystem for reference or manual flashing
+
 ## [2026.2.13.02] - 2026-02-13
 
 ### Added
