@@ -315,9 +315,7 @@ void setup() {
   }
 
   // Initialize Probe Manager (aggregated temperature from multiple sources)
-  if (!ProbeManager::getInstance().begin()) {
-    Serial.println("WARNING: Probe Manager initialization did not detect any temperature sensors");
-  }
+  ProbeManager::getInstance().begin();
   
   // Initialize LittleFS early (needed for firmware update check)
   initLittleFS();
@@ -545,16 +543,39 @@ void handleDisplayTasks() {
   if (ipDisplayCleared && (now - lastDisplayUpdate >= 1000) && DisplayManager::getInstance().isInitialized()) {
     lastDisplayUpdate = now;
     
-    float temp = AHT10Manager::getInstance().getTemperature();
-    float humidity = AHT10Manager::getInstance().getHumidity();
-    String sensorInfo = String(temp, 1) + "°C  " + String(humidity, 0) + "%";
+    // Read all temperature probes (AHT10 master and MS11-slave)
+    if (ProbeManager::getInstance().isInitialized()) {
+      ProbeManager::getInstance().readAllProbes();
+    }
     
-    static String lastSensorInfo = "";
-    if (sensorInfo != lastSensorInfo) {
-      lastSensorInfo = sensorInfo;
+    // Get MST (master) temperature and humidity from AHT10
+    float tempMST = AHT10Manager::getInstance().getTemperature();
+    float humidity = AHT10Manager::getInstance().getHumidity();
+    String lineM = "MST: " + String(tempMST, 1) + "°C " + String(humidity, 0) + "%";
+    
+    // Get SLV (slave) temperature from MS11-control
+    String lineSLV = "";
+    ProbeData* slaveProbe = ProbeManager::getInstance().getProbeByType(ProbeType::MS11_CONTROL_TEMP);
+    if (slaveProbe && slaveProbe->healthy) {
+      float tempSLV = slaveProbe->temperature;
+      lineSLV = "SLV: " + String(tempSLV, 1) + "°C";
+    }
+    
+    // Combine both lines
+    String displayInfo = lineM;
+    if (!lineSLV.isEmpty()) {
+      displayInfo = lineM + "\n" + lineSLV;
+    }
+    
+    static String lastDisplayInfo = "";
+    if (displayInfo != lastDisplayInfo) {
+      lastDisplayInfo = displayInfo;
       DisplayManager::getInstance().clear();
       DisplayManager::getInstance().setFont(ArialMT_Plain_10);
-      DisplayManager::getInstance().drawString(0, 0, sensorInfo);
+      DisplayManager::getInstance().drawString(0, 0, lineM);
+      if (!lineSLV.isEmpty()) {
+        DisplayManager::getInstance().drawString(0, 12, lineSLV);
+      }
       DisplayManager::getInstance().updateDisplay();
     }
   }
