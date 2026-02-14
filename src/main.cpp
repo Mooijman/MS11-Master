@@ -426,6 +426,7 @@ void setup() {
     // Line 2 intentionally left blank
     DisplayManager::getInstance().drawString(0, 28, "fw-" + currentFirmwareVersion);
     DisplayManager::getInstance().drawString(0, 42, "fs-" + currentFilesystemVersion);
+    DisplayManager::getInstance().drawString(0, 54, "sl-" + SlaveController::getInstance().getFullVersionString());
     DisplayManager::getInstance().updateDisplay();
     
     // Show WiFi enabled and IP address on LCD (16x2 display)
